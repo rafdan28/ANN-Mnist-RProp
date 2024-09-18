@@ -46,3 +46,57 @@ def get_mnist_labels(labels):
         one_hot_labels[label, idx] = 1  # Assegna 1 alla posizione corrispondente
 
     return one_hot_labels
+
+def get_mnist_test(dataset, training_size, test_size):
+    """
+    Funzione per creare input e target per il test set a partire dal MNIST.
+
+    Args:
+        dataset (numpy.ndarray): Il dataset MNIST completo.
+        training_size (int): Numero di esempi nel training set.
+        test_size (int): Numero di esempi nel test set.
+
+    Returns:
+        tuple: Dati di input di test e relative etichette in formato one-hot.
+    """
+    # Estrai i dati di test dal dataset, iniziando dopo il training set
+    data_test = dataset[training_size:training_size + test_size].T  # Trasponiamo per ottenere immagini come colonne
+
+    # Estrai le etichette di test
+    test_Y = data_test[0]  # Prima riga contiene le etichette
+
+    # Converti le etichette in formato one-hot
+    test_Y = get_mnist_labels(test_Y)
+
+    # Estrai i dati di input di test e normalizza dividendo per 255
+    test_X = data_test[1:]  # Restanti righe contengono le immagini
+    test_X = test_X / 255.  # Normalizzazione
+
+    return test_X, test_Y
+
+def get_mnist_validation(dataset, training_size, test_size):
+    """
+    Funzione per creare input e target per il validation set a partire dal MNIST.
+
+    Args:
+        dataset (numpy.ndarray): Il dataset MNIST completo.
+        training_size (int): Numero di esempi nel training set.
+        test_size (int): Numero di esempi nel test set.
+
+    Returns:
+        tuple: Dati di input di validazione e relative etichette in formato one-hot.
+    """
+    # Estrai i dati di validazione dal dataset, che è la parte rimanente dopo training e test
+    data_val = dataset[training_size + test_size:].T  # Trasponiamo per ottenere immagini come colonne
+
+    # Estrai le etichette di validazione
+    validation_Y = data_val[0]  # Prima riga contiene le etichette
+
+    # Converti le etichette in formato one-hot
+    validation_Y = get_mnist_labels(validation_Y)
+
+    # Estrai i dati di input di validazione e normalizza dividendo per 255
+    validation_X = data_val[1:]  # Restanti righe contengono le immagini
+    validation_X = validation_X / 255.  # Normalizzazione
+
+    return validation_X, validation_Y
