@@ -1,18 +1,17 @@
 import numpy as np
 
-def get_mnist_training(dataset, training_size):
+def get_mnist_training(dataset):
     """
     Funzione per creare input e target per il training set a partire dal MNIST.
 
     Args:
         dataset (numpy.ndarray): Il dataset MNIST completo.
-        training_size (int): Numero di esempi da usare per il training.
 
     Returns:
         tuple: Dati di input di training e relative etichette in formato one-hot.
     """
     # Estrai i dati di training dal dataset
-    data_train = dataset[:training_size].T  # Trasponiamo per ottenere immagini come colonne
+    data_train = dataset[:len(dataset)].T  # Trasponiamo per ottenere immagini come colonne
 
     # Estrai le etichette di training
     train_Y = data_train[0]  # Prima riga, che contiene le etichette
@@ -47,20 +46,19 @@ def get_mnist_labels(labels):
 
     return one_hot_labels
 
-def get_mnist_test(dataset, training_size, test_size):
+def get_mnist_test(dataset, test_size):
     """
     Funzione per creare input e target per il test set a partire dal MNIST.
 
     Args:
         dataset (numpy.ndarray): Il dataset MNIST completo.
-        training_size (int): Numero di esempi nel training set.
         test_size (int): Numero di esempi nel test set.
 
     Returns:
         tuple: Dati di input di test e relative etichette in formato one-hot.
     """
     # Estrai i dati di test dal dataset
-    data_test = dataset[training_size:training_size + test_size].T  # Trasponiamo per ottenere immagini come colonne
+    data_test = dataset[:test_size].T  # Trasponiamo per ottenere immagini come colonne
 
     # Estrai le etichette di test
     test_Y = data_test[0]  # Prima riga contiene le etichette
@@ -74,20 +72,18 @@ def get_mnist_test(dataset, training_size, test_size):
 
     return test_X, test_Y
 
-def get_mnist_validation(dataset, training_size, test_size):
+def get_mnist_validation(dataset):
     """
     Funzione per creare input e target per il validation set a partire dal MNIST.
 
     Args:
         dataset (numpy.ndarray): Il dataset MNIST completo.
-        training_size (int): Numero di esempi nel training set.
-        test_size (int): Numero di esempi nel test set.
 
     Returns:
         tuple: Dati di input di validazione e relative etichette in formato one-hot.
     """
     # Estrai i dati di validazione dal dataset, che è la parte rimanente dopo training e test
-    data_val = dataset[training_size + test_size:].T  # Trasponiamo per ottenere immagini come colonne
+    data_val = dataset[:len(dataset)].T  # Trasponiamo per ottenere immagini come colonne
 
     # Estrai le etichette di validazione
     validation_Y = data_val[0]  # Prima riga contiene le etichette
