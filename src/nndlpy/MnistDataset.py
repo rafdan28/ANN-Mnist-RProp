@@ -11,7 +11,7 @@ def get_mnist_training(dataset, training_size):
     Returns:
         tuple: Dati di input di training e relative etichette in formato one-hot.
     """
-    # Estrai i dati di training dal dataset, usando il numero di esempi specificato
+    # Estrai i dati di training dal dataset
     data_train = dataset[:training_size].T  # Trasponiamo per ottenere immagini come colonne
 
     # Estrai le etichette di training
@@ -59,7 +59,7 @@ def get_mnist_test(dataset, training_size, test_size):
     Returns:
         tuple: Dati di input di test e relative etichette in formato one-hot.
     """
-    # Estrai i dati di test dal dataset, iniziando dopo il training set
+    # Estrai i dati di test dal dataset
     data_test = dataset[training_size:training_size + test_size].T  # Trasponiamo per ottenere immagini come colonne
 
     # Estrai le etichette di test
