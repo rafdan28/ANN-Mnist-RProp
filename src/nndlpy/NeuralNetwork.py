@@ -1,190 +1,80 @@
 import numpy as np
 
 class NeuralNetwork:
-    def __init__(self, size_input_layer, size_output_layer, activation_function_output_layer, activation_functions_hidden_layer, neurons_hidden_layer, error_function):
-        # Costruzione ed inizializzazione della rete neurale
-        #
-        # Parametri:
-        #   (int) size_input_layer: Dimensione dell'input layer
-        #   (int) size_output_layer: Dimensione dell'output layer
-        #   (activation function) activation_function_output_layer: Funzione di attivazione per l'output layer
-        #   (list) activation_functions_hidden_layer: Lista per le funzioni di attivazione degli hidden layer
-        #   (list) neurons_hidden_layer: Lista per il numero di neuroni di ogni hidden layer
-        #   (error function) error_function: Funzione di errore
-        #
-        # Solleva:
-        #   ValueError: Se il numero di funzioni di attivazione non corrisponde al numero di hidden layer specificati.
+    MEAN, STD_DEV = 0, 0.1
 
-        self.MU = 0  # Media per la distribuzione normale
-        self.SIGMA = 0.1  # Deviazione standard per la distribuzione normale
+    def __init__(self, hidden_activations, output_activation, loss_function,
+                 input_size, hidden_layer_sizes, output_size):
+        """
+        Costruttore per l'inizializzazione della rete neurale.
 
-        self.layers_weights = []
-        self.neurons_hidden_layers = neurons_hidden_layer
+        Args:
+            hidden_activations (list): Funzioni di attivazione per gli strati nascosti.
+            output_activation (function): Funzione di attivazione per lo strato di output.
+            loss_function (function): Funzione di perdita (errore).
+            input_size (int): Numero di unità nello strato di input.
+            hidden_layer_sizes (list): Dimensioni degli strati nascosti.
+            output_size (int): Numero di unità nello strato di output.
+        """
+        self.weights = []
+        self.hidden_layers = hidden_layer_sizes
+        self.loss_function = loss_function
 
-        if len(activation_functions_hidden_layer) != len(neurons_hidden_layer):
-            raise ValueError("Il numero di funzioni di attivazione deve essere uguale al numero di neuroni per ogni hidden layer")
+        if len(hidden_activations) != len(hidden_layer_sizes):
+            raise ValueError("Discrepanza tra numero di layer nascosti e funzioni di attivazione.")
 
-        self.activation_functions_hidden_layer = activation_functions_hidden_layer
-        self.activation_function_output_layer = activation_function_output_layer
-        self.error_function = error_function
-        self.size_hidden_layer = len(neurons_hidden_layer)
+        self.activation_functions = hidden_activations + [output_activation]
+        # self.hidden_activation_functions = hidden_activations
+        # self.hidden_activation_functions.append(output_activation)
+        self.num_hidden_layers = len(hidden_layer_sizes)
+        self._initialize_weights(input_size, output_size)
 
-        self.initialize_weights_bias(size_input_layer, size_output_layer)
+    def _initialize_weights(self, input_size, output_size):
+        """
+        Inizializza i pesi e i bias per ogni strato.
 
-    def initialize_weights_bias(self, size_input_layer, size_output_layer):
-        # Inizializzazione dei pesi e del bias per tutti gli strati della rete
-        #
-        # Parametri:
-        #  (int) size_input_layer: Dimensione dell'input layer
-        #  (int) size_output_layer: Dimensione dell'output layer
+        Args:
+            input_size (int): Numero di unità nello strato di input.
+            output_size (int): Numero di unità nello strato di output.
+        """
+        hidden_sizes = self.hidden_layers
 
-        # Inizializzazione dei pesi e del bias per l'input layer
-        self.layers_weights.insert(0, np.random.normal(self.MU, self.SIGMA, size=(self.neurons_hidden_layers[0], size_input_layer + 1)))
+        # Pesi per lo strato di input
+        self._set_weights(0, hidden_sizes[0], input_size)
 
-        # Inizializzazione dei pesi e dei bias per gli hidden layer
-        for l in range(1, self.size_hidden_layer):
-            self.layers_weights.insert(l, np.random.normal(self.MU, self.SIGMA, size=(self.neurons_hidden_layers[l], self.neurons_hidden_layers[l - 1] + 1)))
+        # Pesi per gli strati nascosti
+        for i in range(1, self.num_hidden_layers):
+            self._set_weights(i, hidden_sizes[i], hidden_sizes[i - 1])
 
-        # Inizializzazione dei pesi e del bias per l'output layer
-        self.layers_weights.insert(self.size_hidden_layer, np.random.normal(self.MU, self.SIGMA, size=(size_output_layer, self.neurons_hidden_layers[-1] + 1)))
+        # Pesi per lo strato di output
+        self._set_weights(self.num_hidden_layers, output_size, hidden_sizes[-1])
 
-    def forward_propagation(self, input_data):
-        # Implementazione della propagazione in avanti mediante pesi e bias.
-        #
-        # Parametri:
-        #  (ndarray) input_data: Dati forniti in input.
-        #
-        # Ritorna:
-        #    Uscita della rete neurale dopo la propagazione in avanti.
+    def _set_weights(self, layer_idx, num_neurons, num_inputs):
+        """
+        Assegna i pesi per uno specifico layer.
 
-        num_layers = len(self.layers_weights)
-        current_activations = input_data
+        Args:
+            layer_idx (int): Indice del layer.
+            num_neurons (int): Numero di neuroni nel layer.
+            num_inputs (int): Numero di input del layer.
+        """
+        self.weights.append(np.random.normal(self.MEAN, self.STD_DEV, (num_neurons, num_inputs + 1)))
 
-        for l in range(num_layers):
-            # Aggiunge il bias all'input del layer corrente
-            bias_row = np.ones((1, current_activations.shape[1]))
-            input_with_bias = np.insert(current_activations, 0, bias_row, axis=0)
+    def get_network(self):
+        """
+        Restituisce la descrizione della struttura della rete.
+        """
+        hidden_layer_count = self.num_hidden_layers
+        input_dim = self.weights[0].shape[1] - 1
+        output_dim = self.weights[-1].shape[0]
 
-            # Calcola l'output del layer corrente
-            weights = self.layers_weights[l]
-            z_values = np.dot(weights, input_with_bias)
+        neurons_per_hidden_layer = [self.weights[i].shape[0] for i in range(hidden_layer_count)]
+        activations = [fn.__name__ for fn in self.activation_functions]
+        # activations = [fn.__name__ for fn in self.hidden_activation_functions]
 
-            # Determina la funzione di attivazione da utilizzare per questo layer
-            if l < self.size_hidden_layer:
-                activation_function = self.activation_functions_hidden_layer[l]
-            else:
-                activation_function = self.activation_function_output_layer
-
-            # Applica la funzione di attivazione per ottenere le nuove attivazioni
-            current_activations = activation_function(z_values)
-
-        return current_activations
-
-    def compute_gradients(self, input_data, target):
-        # Calcola i gradienti dei pesi utilizzando la backpropagation..
-        #
-        # Parametri:
-        #   (ndarray) input_data: Dati di input.
-        #   (ndarray) target: Valori target desiderati.
-        #
-        # Ritorna:
-        #    Gradienti dei pesi per ciascuno strato della rete neurale.
-
-        # Esegui la propagazione in avanti
-        activations = self.forward_propagation(input_data)
-
-        # Calcola l'errore
-        error = self.error_function(target, activations)
-
-        # Calcola i gradienti utilizzando la backpropagation
-        gradients = []
-        delta = error * self.error_function.derivative(target, activations)  # Derivata dell'errore rispetto all'output
-
-        for layer_idx in reversed(range(len(self.layers_weights))):
-            # Aggiorna i gradienti per i pesi del layer corrente
-            activations_with_bias = np.insert(self.activations[layer_idx], 0, np.ones((1, input_data.shape[1])), axis=0)
-            weights_gradient = np.dot(delta, activations_with_bias.T) / input_data.shape[1]
-            gradients.insert(0, weights_gradient)
-
-            if layer_idx > 0:
-                # Propaga l'errore al layer precedente
-                delta = np.dot(self.layers_weights[layer_idx][:, 1:].T, delta) * self.activation_functions_hidden_layer[
-                    layer_idx - 1].derivative(self.activations[layer_idx - 1])
-
-        return gradients
-
-    def gradient_descent(self, learning_rate, input_data, target):
-        # Aggiornamento dei pesi e dei bias utilizzando la discesa del gradiente.
-        #
-        # Parametri:
-        #   (float) learning_rate: Tasso di apprendimento per il controllo della dimensione
-        #                           dei passi dell'aggiornamento.
-        #   (list) weights: Lista dei gradienti dei pesi per ciascun layer.
-        #
-        # Ritorna:
-        #   Rete neurale aggiornata.
-
-        # Calcola i gradienti dei pesi
-        gradients = self.compute_gradients(input_data, target)
-
-        # Aggiorna i pesi utilizzando il gradiente discendente
-        for layer_idx in range(len(self.layers_weights)):
-            self.layers_weights[layer_idx] -= learning_rate * gradients[layer_idx]
-
-        return self
-
-    def back_propagation(self, input_activations, layer_outputs, target, error_function):
-        # Implementazione della back-propagation per calcolare i gradienti dei pesi e dei bias.
-        #
-        # Parametri:
-        #   (list of numpy.ndarray) input_activations: Attivazioni di input di ciascun layer.
-        #   (list of numpy.ndarray) layer_outputs: Output di ciascun layer.
-        #   (numpy.ndarray) target: Target desiderato per l'output della rete.
-        #   (error_function) error_function : Funzione di errore utilizzata per calcolare il gradiente.
-        #
-        # Ritorna:
-        #   Tupla contenente i gradienti dei pesi e dei bias per ciascun layer.
-
-        num_layers = len(self.layers_weights)
-        weight_gradients = []
-        bias_gradients = []
-
-        # A partire dall'output layer, sono calcolati i gradienti dei pesi e dei bias per ciascun layer
-        for l in range(num_layers - 1, -1, -1):
-            if l == num_layers - 1:
-                # Calcolo del delta per l'output layer
-                output_error_derivative = error_function.derivative(layer_outputs[-1], target)
-                delta = [input_activations[-1] * output_error_derivative]
-            else:
-                # Calcolo del delta per gli hidden layer
-                activation_derivative = self.activation_functions_hidden_layer[l].derivative(layer_outputs[l])
-                error_derivative = np.dot(self.layers_weights[l + 1][:, 1:].T, delta[0]) * activation_derivative
-                delta = [input_activations[l] * error_derivative]
-
-            # Calcolo del gradiente dei pesi per il layer corrente
-            weight_gradient = np.dot(delta[0], layer_outputs[l].T)
-
-            # Calcolo del gradiente del bias per il layer corrente
-            bias_gradient = np.sum(delta[0], axis=1, keepdims=True)
-
-            weight_gradients.insert(0, weight_gradient)
-            bias_gradients.insert(0, bias_gradient)
-
-        return weight_gradients, bias_gradients
-
-    # def gradient_descent(self, learning_rate, weights):
-    #     # Aggiornamento dei pesi e dei bias utilizzando la discesa del gradiente.
-    #     #
-    #     # Parametri:
-    #     #   (float) learning_rate: Tasso di apprendimento per il controllo della dimensione
-    #     #                           dei passi dell'aggiornamento.
-    #     #   (list) weights: Lista dei gradienti dei pesi per ciascuno strato.
-    #     #
-    #     # Ritorna:
-    #     #   Rete neurale aggiornata.
-    #
-    #     for l in range(len(self.layers_weights)):
-    #         # Aggiornamento dei pesi utilizzando il gradiente discendente
-    #         self.layers_weights[l] -= learning_rate * weights[l]
-    #
-    #     return self
+        print(f"Numero di layer nascosti: {hidden_layer_count}")
+        print(f"Dimensione dell'input: {input_dim}")
+        print(f"Dimensione dell'output: {output_dim}")
+        print(f"Neuroni nei layer nascosti: {neurons_per_hidden_layer}")
+        print(f"Funzioni di attivazione: {', '.join(activations)}")
+        print(f"Funzione di perdita: {self.loss_function.__name__}")

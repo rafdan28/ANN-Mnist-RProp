@@ -1,6 +1,22 @@
 import numpy as np
 
-def sigmoid(x, der=False):
+def identity(x, der = False):
+    """
+    Calcola la funzione identità o anche la sua derivata.
+
+    Args:
+        x (float): Il valore di input.
+        der (bool, optional): Se è False, calcola la funzione identità, altrimenti calcola la derivata. Default è False.
+
+    Returns:
+        float: Se der=False, restituisce il valore di input x, altrimenti restituisce la sua derivata.
+    """
+    if not der:
+        return x
+    else:
+        return 1  # La derivata della funzione identità è sempre 1
+
+def sigmoid(x, der = False):
     """
     Calcola la funzione sigmoide o la sua derivata.
 
@@ -17,7 +33,7 @@ def sigmoid(x, der=False):
         sig = 1 / (1 + np.exp(-x))
         return sig * (1 - sig)  # Derivata della funzione sigmoide
 
-def relu(x, der=0):
+def relu(x, der = 0):
     """
     Calcola la funzione ReLU o la sua derivata.
 
@@ -33,7 +49,7 @@ def relu(x, der=0):
     else:
         return np.where(x > 0, 1, 0)  # Derivata della funzione ReLU
 
-def tanh(x, der=False):
+def tanh(x, der = False):
     """
     Calcola la tangente iperbolica o anche la sua derivata.
 
