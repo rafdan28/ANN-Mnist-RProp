@@ -195,7 +195,7 @@ class NeuralNetwork:
         # Copia delle funzioni di attivazione
         destination_net.activation_functions = list(self.activation_functions)
 
-    def activations_derivatives_calc(self, input_data):
+    def _activations_derivatives_calc(self, input_data):
         """
         Calcola gli output per ogni layer e le derivate delle funzioni di attivazione
         necessarie per la backpropagation.
@@ -231,10 +231,10 @@ class NeuralNetwork:
 
         return layer_outputs, activation_derivatives
 
-    def update_weights_rprop(self, gradients, weight_updates, previous_gradients, previous_weight_updates,
-                             current_error,
-                             previous_error, positive_eta=1.2, negative_eta=0.5, max_delta=50, min_delta=0.00001,
-                             rprop_method='STANDARD'):
+    def _update_weights_rprop(self, gradients, weight_updates, previous_gradients, previous_weight_updates,
+                              current_error,
+                              previous_error, positive_eta=1.2, negative_eta=0.5, max_delta=50, min_delta=0.00001,
+                              rprop_method='STANDARD'):
         """
         Aggiorna i pesi della rete neurale utilizzando l'algoritmo Rprop. Supporta diverse varianti
         come descritto nell'articolo "Empirical evaluation of the improved Rprop learning algorithms".
@@ -343,8 +343,8 @@ class NeuralNetwork:
             training_errors.append(current_training_error)
             validation_errors.append(current_validation_error)
 
-            training_accuracies.append(calculate_accuracy(training_output, training_labels))
-            validation_accuracies.append(calculate_accuracy(validation_output, validation_labels))
+            training_accuracies.append(_calculate_accuracy(training_output, training_labels))
+            validation_accuracies.append(_calculate_accuracy(validation_output, validation_labels))
 
             # Stampa delle informazioni per le epoche
             log_epoch_info(epoch, num_epochs, training_accuracies[-1], current_training_error,
@@ -354,7 +354,7 @@ class NeuralNetwork:
                 break
 
             # Calcolo dei gradienti
-            layer_outputs, activation_derivatives = self.activations_derivatives_calc(training_data)
+            layer_outputs, activation_derivatives = self._activations_derivatives_calc(training_data)
             gradients = self._back_propagation(activation_derivatives, layer_outputs, training_labels,
                                                self.loss_function)
 
@@ -364,9 +364,9 @@ class NeuralNetwork:
                 weight_differences = deepcopy(weights_update)
                 previous_gradients = deepcopy(gradients)
             else:
-                weight_differences = self.update_weights_rprop(gradients, weights_update, previous_gradients,
-                                                               weight_differences, current_validation_error,
-                                                               previous_validation_error, rprop_method=rprop_method)
+                weight_differences = self._update_weights_rprop(gradients, weights_update, previous_gradients,
+                                                                weight_differences, current_validation_error,
+                                                                previous_validation_error, rprop_method=rprop_method)
 
             previous_validation_error = current_validation_error
 
@@ -425,34 +425,46 @@ def plot_metrics(results):
     plt.show()
 
 
-def calculate_accuracy(predictions, true_labels):
+def _calculate_accuracy(predictions, true_labels):
     """
-    Calcola l'accuratezza della rete neurale confrontando le previsioni con i valori reali.
+    Calcola l'accuratezza della rete confrontando le previsioni con le etichette reali.
 
     Args:
-        predictions (numpy.ndarray): Array contenente le previsioni della rete.
-        true_labels (numpy.ndarray): Array contenente i valori reali.
+        predictions (numpy.ndarray): Array con le previsioni della rete.
+        true_labels (numpy.ndarray): Array con le etichette reali.
 
     Returns:
-        float: Percentuale di previsioni corrette rispetto ai valori reali.
+        float: Accuratezza come percentuale di previsioni corrette.
     """
+
+    def apply_softmax(preds):
+        return LossFunctions.softmax(preds)
+
+    def get_predicted_classes(probs):
+        return np.argmax(probs, axis=0)
+
+    def get_true_classes(labels):
+        return np.argmax(labels, axis=0)
+
+    def calculate_correct_predictions(preds, true_cls):
+        return np.sum(preds == true_cls)
+
     num_samples = true_labels.shape[1]
 
-    # Calcola le probabilità con la funzione softmax sulle previsioni
-    probability_predictions = LossFunctions.softmax(predictions)
+    # Calcola le probabilità utilizzando la funzione softmax
+    probability_predictions = apply_softmax(predictions)
 
-    # Ottiene le classi predette trovando l'indice del valore massimo lungo l'asse delle colonne
-    predicted_classes = np.argmax(probability_predictions, axis=0)
+    # Ottiene le classi predette e le classi reali
+    predicted_classes = get_predicted_classes(probability_predictions)
+    true_classes = get_true_classes(true_labels)
 
-    # Ottiene le classi target trovando l'indice del valore massimo negli obiettivi reali
-    true_classes = np.argmax(true_labels, axis=0)
+    # Calcola il numero di previsioni corrette
+    correct_predictions_count = calculate_correct_predictions(predicted_classes, true_classes)
 
-    # Conta le previsioni corrette confrontando le classi predette con quelle reali
-    correct_predictions_count = np.sum(predicted_classes == true_classes)
+    # Calcola l'accuratezza come rapporto tra le previsioni corrette e il numero totale di campioni
     accuracy_ratio = correct_predictions_count / num_samples
 
     return accuracy_ratio
-
 
 def metrics_mae_rmse_accuracy(metrics_list, epochs, number_of_runs):
     """
