@@ -466,58 +466,49 @@ def _calculate_accuracy(predictions, true_labels):
 
     return accuracy_ratio
 
+
 def metrics_mae_rmse_accuracy(metrics_list, epochs, number_of_runs):
     """
-    Calcola l'Errore Assoluto Medio (MAE), l'Errore Quadratico Medio (RMSE) e l'accuratezza delle metriche
-    per ogni epoca attraverso diverse esecuzioni di addestramento.
+    Calcola l'Errore Assoluto Medio (MAE), l'Errore Quadratico Medio (RMSE) e l'accuratezza per ogni epoca
+    attraverso diverse esecuzioni di addestramento.
 
-    Args: metrics_list (list): Una lista di liste contenente le metriche ottenute da diverse esecuzioni di
-    addestramento. Ogni sottolista corrisponde a una singola esecuzione e contiene le metriche calcolate per ogni
-    epoca. epochs (int): Il numero totale di epoche. number_of_runs (int): Il numero totale di esecuzioni di
-    addestramento.
+    Args:
+        metrics_list (list): Lista di liste contenente le metriche per diverse esecuzioni di addestramento.
+        epochs (int): Numero totale di epoche.
+        number_of_runs (int): Numero totale di esecuzioni di addestramento.
 
     Returns:
-        Tuple: Una tupla contenente:
-                - mae_list: Lista dei MAE per ogni epoca.
-                - rmse_list: Lista dei RMSE per ogni epoca.
-                - accuracy_list: Lista delle accuratezze per ogni epoca.
+        tuple: Una tupla contenente:
+            - mae_list: Lista dei MAE per ogni epoca.
+            - rmse_list: Lista dei RMSE per ogni epoca.
+            - accuracy_list: Lista delle accuratezze per ogni epoca.
     """
-    mae_list = []
-    rmse_list = []
-    accuracy_list = []
 
-    for epoch in range(epochs + 1):
-        mae = 0
-        rmse = 0
-        accuracy = 0
+    def calculate_mean_absolute_error(run_data, epoch_idx):
+        return np.mean(np.abs(run_data[0][epoch_idx] - run_data[1][epoch_idx]))
 
-        for run in range(number_of_runs):
-            # Calcola MAE
-            mae += np.mean(np.abs(metrics_list[run][0][epoch] - metrics_list[run][1][epoch])) / number_of_runs
+    def calculate_root_mean_square_error(run_data, epoch_idx):
+        return np.sqrt(np.mean((run_data[0][epoch_idx] - run_data[1][epoch_idx]) ** 2))
 
-            # Calcola RMSE
-            rmse += np.sqrt(
-                np.mean((metrics_list[run][0][epoch] - metrics_list[run][1][epoch]) ** 2)) / number_of_runs
+    def calculate_accuracy(run_data, epoch_idx):
+        return np.mean(run_data[2][epoch_idx])
 
-            # Calcola accuratezza (supponendo che le etichette siano nel formato appropriato)
-            accuracy += np.mean(
-                metrics_list[run][2][epoch]) / number_of_runs  # Assuming accuracy is stored in index 2
+    def calculate_metric_over_runs(metric_func, epoch):
+        return sum(metric_func(metrics_list[run], epoch) for run in range(number_of_runs)) / number_of_runs
 
-        mae_list.append(round(mae, 5))
-        rmse_list.append(round(rmse, 5))
-        accuracy_list.append(round(accuracy, 5))
+    mae_list = [round(calculate_metric_over_runs(calculate_mean_absolute_error, epoch), 5) for epoch in
+                range(epochs + 1)]
+    rmse_list = [round(calculate_metric_over_runs(calculate_root_mean_square_error, epoch), 5) for epoch in
+                 range(epochs + 1)]
+    accuracy_list = [round(calculate_metric_over_runs(calculate_accuracy, epoch), 5) for epoch in range(epochs + 1)]
 
-    # Stampa dei risultati finali
-    print("MAE per ogni epoca:")
-    for epoch, value in enumerate(mae_list):
-        print(f"Epoca {epoch}: {value}")
+    def print_metrics(metric_name, metric_list):
+        print(f"\n{metric_name} per ogni epoca:")
+        for epoch, value in enumerate(metric_list):
+            print(f"Epoca {epoch}: {value}")
 
-    print("\nRMSE per ogni epoca:")
-    for epoch, value in enumerate(rmse_list):
-        print(f"Epoca {epoch}: {value}")
-
-    print("\nAccuratezza per ogni epoca:")
-    for epoch, value in enumerate(accuracy_list):
-        print(f"Epoca {epoch}: {value}")
+    print_metrics("MAE", mae_list)
+    print_metrics("RMSE", rmse_list)
+    print_metrics("Accuratezza", accuracy_list)
 
     return mae_list, rmse_list, accuracy_list
