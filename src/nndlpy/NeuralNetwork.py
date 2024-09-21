@@ -1,7 +1,11 @@
 from copy import deepcopy
+
+from matplotlib import pyplot as plt
 from nndlpy import LossFunctions as LossFunctions
+
 import numpy as np
 import time
+
 
 class NeuralNetwork:
     MEAN, STD_DEV = 0, 0.1
@@ -146,6 +150,7 @@ class NeuralNetwork:
             list: Lista contenente i gradienti dei pesi per ogni layer.
         """
         # Estrazione dei pesi e numero di layer
+        global delta
         weights = self.weights
         num_layers = len(weights)
 
@@ -175,113 +180,6 @@ class NeuralNetwork:
 
         return weight_gradients
 
-    def _evaluate_model(self, output, labels, metric='accuracy'):
-        """
-        Valuta le prestazioni della rete neurale confrontando le previsioni con i target desiderati.
-
-        Args:
-            output (numpy.ndarray): Array contenente le previsioni della rete.
-            labels (numpy.ndarray): Array contenente i target desiderati.
-            metric (str): La metrica da calcolare ('accuracy', 'precision', 'recall').
-
-        Returns:
-            float: Valore della metrica calcolata.
-        """
-        num_samples = labels.shape[1]
-
-        # Applica la funzione softmax alle previsioni della rete
-        softmax_predictions = LossFunctions.softmax(output)
-
-        # Trova le classi predette
-        predicted_classes = np.argmax(softmax_predictions, axis=0)
-        target_classes = np.argmax(labels, axis=0)
-
-        if metric == 'accuracy':
-            correct_predictions = np.sum(predicted_classes == target_classes)
-            return correct_predictions / num_samples
-
-        elif metric == 'precision':
-            true_positives = np.sum((predicted_classes == target_classes) & (predicted_classes == 1))
-            predicted_positives = np.sum(predicted_classes == 1)
-            return true_positives / predicted_positives if predicted_positives > 0 else 0.0
-
-        elif metric == 'recall':
-            true_positives = np.sum((predicted_classes == target_classes) & (predicted_classes == 1))
-            actual_positives = np.sum(target_classes == 1)
-            return true_positives / actual_positives if actual_positives > 0 else 0.0
-
-        else:
-            raise ValueError("Metric non valida. Usa 'accuracy', 'precision' o 'recall'.")
-
-    def _compute_activations_and_derivatives(self, input_data):
-        """
-        Calcola gli output dei neuroni e le derivate delle funzioni di attivazione per la retropropagazione.
-
-        Args:
-            input_data (numpy.ndarray): I dati di input.
-
-        Returns:
-            tuple: Una tupla contenente gli output dei neuroni di ogni layer e le derivate delle funzioni di attivazione.
-        """
-        # Inizializza le liste per gli output e le derivate
-        layer_outputs = [input_data]
-        activation_derivatives = []
-
-        for layer_idx, (weights, activation_function) in enumerate(zip(self.weights, self.activation_functions)):
-            # Aggiungi il bias all'input del layer corrente
-            input_with_bias = np.vstack((np.ones((1, layer_outputs[layer_idx].shape[1])), layer_outputs[layer_idx]))
-
-            # Calcola l'output del layer
-            linear_output = np.dot(weights, input_with_bias)
-            layer_output = activation_function(linear_output)
-
-            # Calcola la derivata dell'attivazione
-            derivative_activation = activation_function(linear_output, der=True)
-
-            # Memorizza gli output e le derivate
-            layer_outputs.append(layer_output)
-            activation_derivatives.append(derivative_activation)
-
-        return layer_outputs, activation_derivatives
-
-    @staticmethod
-    def standard_rprop(weights_der, weights_delta, layer_weights_difference, layer_idx, row_idx, col_idx):
-        return -np.sign(weights_der[layer_idx][row_idx][col_idx]) * weights_delta[layer_idx][row_idx][col_idx]
-
-    @staticmethod
-    def rprop_plus(weights_der, weights_delta, layer_weights_difference_prev, train_error, train_error_prev,
-                   layer_idx, row_idx, col_idx):
-        return -layer_weights_difference_prev[layer_idx][row_idx][col_idx]
-
-    @staticmethod
-    def irprop(weights_der, weights_delta, layer_weights_difference, layer_idx, row_idx, col_idx):
-        return -np.sign(weights_der[layer_idx][row_idx][col_idx]) * weights_delta[layer_idx][row_idx][col_idx]
-
-    def rprop_update(self, weights_der, weights_delta, layer_weights_difference_prev,
-                     train_error, train_error_prev, eta_pos=1.2, eta_neg=0.5,
-                     delta_max=50, delta_min=0.00001, rprop_type='STANDARD'):
-
-        layer_weights_difference = layer_weights_difference_prev
-
-        for layer in range(len(self.weights)):
-            for row_idx in range(len(weights_der[layer])):
-                for col_idx in range(len(weights_der[layer][row_idx])):
-                    if rprop_type == 'STANDARD':
-                        layer_weights_difference[layer][row_idx][col_idx] = self.standard_rprop(
-                            weights_der, weights_delta, layer_weights_difference, layer, row_idx, col_idx)
-                    elif rprop_type == 'RPROP_PLUS':
-                        layer_weights_difference[layer][row_idx][col_idx] = self.rprop_plus(
-                            weights_der, weights_delta, layer_weights_difference_prev, train_error, train_error_prev,
-                            layer, row_idx, col_idx)
-                    elif rprop_type == 'IRPROP':
-                        layer_weights_difference[layer][row_idx][col_idx] = self.irprop(
-                            weights_der, weights_delta, layer_weights_difference, layer, row_idx, col_idx)
-
-                    # Aggiorna i pesi qui
-                    self.weights[layer][row_idx][col_idx] += layer_weights_difference[layer][row_idx][col_idx]
-
-        return layer_weights_difference
-
     def _clone_network_params(self, destination_net):
         """
         Trasferisce i parametri (pesi, funzioni di attivazione) da una rete sorgente a una rete di destinazione.
@@ -297,108 +195,293 @@ class NeuralNetwork:
         # Copia delle funzioni di attivazione
         destination_net.activation_functions = list(self.activation_functions)
 
-    def train(self, train_X, train_Y, validation_X, validation_Y, epochs=35,
-              learning_rate=0.00001, rprop_type='STANDARD'):
+    def activations_derivatives_calc(self, input_data):
         """
-        Processo di apprendimento per la rete neurale.
+        Calcola gli output per ogni layer e le derivate delle funzioni di attivazione
+        necessarie per la backpropagation.
 
         Args:
-            train_X (numpy.ndarray): Dati di input per il training.
-            train_Y (numpy.ndarray): Target desiderati per i dati di input di training.
-            validation_X (numpy.ndarray): Dati di input per la validazione.
-            validation_Y (numpy.ndarray): Target desiderati per i dati di input di validazione.
-            epochs (int, optional): Numero massimo di epoche per il training (default: 35).
-            learning_rate (float, optional): Tasso di apprendimento per il gradiente discendente (default: 0.00001).
-            rprop_type (str): Tipo di Rprop da utilizzare (default: 'STANDARD').
+            input_data (numpy.ndarray): Dati di input forniti alla rete neurale.
+
+        Returns:
+            tuple: Due liste contenenti gli output di ciascun layer e le relative derivate.
+        """
+
+        # Recupera i pesi e le funzioni di attivazione
+        weights = self.weights
+        activation_functions = self.activation_functions
+        num_layers = len(weights)
+
+        # Inizializza le liste per gli output dei layer e le derivate
+        layer_outputs = [input_data]
+        activation_derivatives = []
+
+        for layer in range(num_layers):
+            # Inserisce il bias e calcola l'output lineare
+            input_with_bias = np.vstack((np.ones((1, layer_outputs[layer].shape[1])), layer_outputs[layer]))
+            linear_output = np.dot(weights[layer], input_with_bias)
+
+            # Calcola l'output finale e la derivata della funzione di attivazione
+            layer_output = activation_functions[layer](linear_output)
+            derivative_activation = activation_functions[layer](linear_output, der=True)
+
+            # Aggiorna le liste degli output e delle derivate
+            layer_outputs.append(layer_output)
+            activation_derivatives.append(derivative_activation)
+
+        return layer_outputs, activation_derivatives
+
+    def update_weights_rprop(self, gradients, weight_updates, previous_gradients, previous_weight_updates,
+                             current_error,
+                             previous_error, positive_eta=1.2, negative_eta=0.5, max_delta=50, min_delta=0.00001,
+                             rprop_method='STANDARD'):
+        """
+        Aggiorna i pesi della rete neurale utilizzando l'algoritmo Rprop. Supporta diverse varianti
+        come descritto nell'articolo "Empirical evaluation of the improved Rprop learning algorithms".
+
+        Args:
+            gradients (list): Gradienti attuali dei pesi per ogni strato.
+            weight_updates (list): Aggiornamenti dei pesi per ogni strato.
+            previous_gradients (list): Gradienti dei pesi dalla iterazione precedente.
+            previous_weight_updates (list): Aggiornamenti dei pesi dalla iterazione precedente.
+            current_error (float): Errore per l'epoca corrente.
+            previous_error (float): Errore per l'epoca precedente.
+            positive_eta (float): Fattore di incremento per il delta in caso di derivata positiva (default: 1.2).
+            negative_eta (float): Fattore di decremento per il delta in caso di derivata negativa (default: 0.5).
+            max_delta (float): Limite superiore per il delta (default: 50).
+            min_delta (float): Limite inferiore per il delta (default: 0.00001).
+            rprop_method (str): Metodo Rprop da utilizzare (default: 'STANDARD').
+
+        Returns:
+            list: Aggiornamenti dei pesi calcolati per ogni strato.
+        """
+
+        # Inizializzazione degli aggiornamenti dei pesi per il layer corrente
+        updated_weight_diff = previous_weight_updates
+
+        for layer in range(len(self.weights)):
+            current_layer_weights = self.weights[layer]
+
+            for row in range(len(gradients[layer])):
+                for col in range(len(gradients[layer][row])):
+                    gradient_product = previous_gradients[layer][row][col] * gradients[layer][row][col]
+
+                    if gradient_product > 0:
+                        # Incremento del delta per pesi
+                        weight_updates[layer][row][col] = min(weight_updates[layer][row][col] * positive_eta, max_delta)
+
+                        # Aggiornamento dell'aggiornamento dei pesi
+                        updated_weight_diff[layer][row][col] = -(
+                                np.sign(gradients[layer][row][col]) * weight_updates[layer][row][col]
+                        )
+
+                    elif gradient_product < 0:
+                        # Decremento del delta per pesi
+                        weight_updates[layer][row][col] = max(weight_updates[layer][row][col] * negative_eta, min_delta)
+
+                        if rprop_method in ['STANDARD', 'IRPROP']:
+                            updated_weight_diff[layer][row][col] = -(
+                                    np.sign(gradients[layer][row][col]) * weight_updates[layer][row][col]
+                            )
+                        else:
+                            if rprop_method in ['RPROP_PLUS'] or current_error > previous_error:
+                                updated_weight_diff[layer][row][col] = -previous_weight_updates[layer][row][col]
+
+                        if rprop_method != 'STANDARD':
+                            gradients[layer][row][col] = 0
+
+                    else:
+                        updated_weight_diff[layer][row][col] = -(
+                                np.sign(gradients[layer][row][col]) * weight_updates[layer][row][col]
+                        )
+
+                    # Aggiornamento del peso
+                    current_layer_weights[row][col] += updated_weight_diff[layer][row][col]
+
+                    # Memorizzazione del gradiente per la prossima iterazione
+                    previous_gradients[layer][row][col] = gradients[layer][row][col]
+                    previous_weight_updates[layer][row][col] = updated_weight_diff[layer][row][col]
+
+        return updated_weight_diff
+
+    def train_model(self, training_data, training_labels, validation_data, validation_labels, num_epochs=35,
+                    learning_rate=0.00001, rprop_method='STANDARD'):
+        """
+        Gestisce il processo di apprendimento della rete neurale.
+
+        Args:
+            training_data (numpy.ndarray): Dati di input per l'addestramento.
+            training_labels (numpy.ndarray): Target desiderati per i dati di input di addestramento.
+            validation_data (numpy.ndarray): Dati di input per la validazione.
+            validation_labels (numpy.ndarray): Target desiderati per i dati di input di validazione.
+            num_epochs (int, optional): Numero massimo di epoche per l'addestramento (default: 35).
+            learning_rate (float, optional): Tasso di apprendimento per l'ottimizzazione (default: 0.00001).
+            rprop_method (str): Tipo di metodo Rprop da utilizzare (default: 'STANDARD').
 
         Returns:
             tuple: Una tupla contenente:
-                - train_errors (list): Lista degli errori di training per ogni epoca.
+                - training_errors (list): Lista degli errori di addestramento per ogni epoca.
                 - validation_errors (list): Lista degli errori di validazione per ogni epoca.
-                - train_accuracies (list): Lista delle accuratezze di training per ogni epoca.
+                - training_accuracies (list): Lista delle accuratezze di addestramento per ogni epoca.
                 - validation_accuracies (list): Lista delle accuratezze di validazione per ogni epoca.
         """
-        train_errors = []
+        training_errors = []
         validation_errors = []
-        train_accuracies = []
+        training_accuracies = []
         validation_accuracies = []
-        error_function = self.loss_function  # Uso della funzione di perdita definita nella classe
+        loss_function = self.loss_function
 
-        # Inizializzazione delle variabili per Rprop
-        weights_delta, prev_weights_der, weight_diff = None, None, None
+        # Inizializzazione delle variabili
+        weights_update, previous_gradients, weight_differences = None, None, None
 
-        prev_validation_error = float('inf')
-        min_validation_error = float('inf')
+        previous_validation_error = float('inf')
+        lowest_validation_error = float('inf')
+        best_model = self.clone_network()
 
-        # Duplica la rete
-        best_network = self.clone_network()
-
+        # Inizio del timer
         start_time = time.time()
 
-        for epoch in range(epochs):
+        # Inizio del processo di addestramento
+        for epoch in range(num_epochs + 1):
 
-            # Propagazione in avanti sul training set
-            train_output = self._forward_propagation(train_X)
-            train_error = error_function(train_output, train_Y)
-            train_errors.append(train_error)
+            # Propagazione in avanti per il set di addestramento
+            training_output = self._forward_propagation(training_data)
+            current_training_error = loss_function(training_output, training_labels)
+            training_errors.append(current_training_error)
 
-            # Propagazione in avanti sul validation set
-            validation_output = self._forward_propagation(validation_X)
-            validation_error = error_function(validation_output, validation_Y)
-            validation_errors.append(validation_error)
+            # Propagazione in avanti per il set di validazione
+            validation_output = self._forward_propagation(validation_data)
+            current_validation_error = loss_function(validation_output, validation_labels)
+            validation_errors.append(current_validation_error)
 
-            train_accuracy = self._evaluate_model(train_output, train_Y)
-            validation_accuracy = self._evaluate_model(validation_output, validation_Y)
-            train_accuracies.append(train_accuracy)
-            validation_accuracies.append(validation_accuracy)
+            current_training_accuracy = calculate_accuracy(training_output, training_labels)
+            current_validation_accuracy = calculate_accuracy(validation_output, validation_labels)
+            training_accuracies.append(current_training_accuracy)
+            validation_accuracies.append(current_validation_accuracy)
 
-            print(f'Epoca: {epoch + 1}/{epochs}  Rprop utilizzata: {rprop_type}\n'
-                  f'    Accuratezza Training: {np.round(train_accuracy, 5)},  Perdita Training: {np.round(train_error, 5)};\n'
-                  f'    Accuratezza Validation: {np.round(validation_accuracy, 5)},  Perdita Validation: {np.round(validation_error, 5)}\n')
+            print(f'\nEpoch: {epoch}/{num_epochs}   Rprop used: {rprop_method}\n'
+                  f'    Training Accuracy: {np.round(current_training_accuracy, 5)},       Training Loss: {np.round(current_training_error, 5)};\n'
+                  f'    Validation Accuracy: {np.round(current_validation_accuracy, 5)},     Validation Loss: {np.round(current_validation_error, 5)}\n')
 
-            # Calcolo dei gradienti e backpropagation
-            layer_outputs, layer_derivatives = self._compute_activations_and_derivatives(train_X)
-            gradients = self._back_propagation(layer_derivatives, layer_outputs, train_Y, error_function)
+            if epoch == num_epochs:
+                break
+
+            # Calcolo dei gradienti e retropropagazione
+            layer_outputs, activation_derivatives = self.activations_derivatives_calc(training_data)
+            gradients = self._back_propagation(activation_derivatives, layer_outputs, training_labels, loss_function)
 
             if epoch == 0:  # Prima epoca
-                self._gradient_descent(learning_rate, gradients)  # Aggiornamento dei pesi
+                # Aggiornamento pesi tramite discesa del gradiente
+                self._gradient_descent(learning_rate, gradients)
 
-                # Inizializzazione per Rprop
-                weights_delta = [[[0.1 for _ in row] for row in sub_list] for sub_list in gradients]
-                weight_diff = [[[0. for _ in row] for row in sub_list] for sub_list in gradients]
+                # Inizializzazione dei delta per Rprop
+                weights_update = [[[0.1 for _ in row] for row in sub_list] for sub_list in gradients]
+                weight_differences = [[[0. for _ in row] for row in sub_list] for sub_list in gradients]
 
-                prev_weights_der = deepcopy(gradients)
+                previous_gradients = deepcopy(gradients)
             else:
-                # Aggiornamento usando Rprop
-                weight_diff = self.rprop_update(gradients, weights_delta, prev_weights_der, weight_diff,
-                                                validation_error, prev_validation_error, rprop_type)
+                # Aggiornamento dei pesi utilizzando Rprop
+                weight_differences = self.update_weights_rprop(gradients, weights_update, previous_gradients,
+                                                               weight_differences, current_validation_error,
+                                                               previous_validation_error, rprop_method=rprop_method)
 
-            prev_validation_error = validation_error  # Aggiorna l'errore di validazione
+            previous_validation_error = current_validation_error
 
-            # Salva la rete migliore se l'errore di validazione è migliorato
-            if validation_error < min_validation_error:
-                min_validation_error = validation_error
-                best_network = self.clone_network()  # Salva la migliore rete
+            # Aggiornamento del modello migliore
+            if current_validation_error < lowest_validation_error:
+                lowest_validation_error = current_validation_error
+                best_model = self.clone_network()
 
-        end_time = time.time()  # Ferma il timer
+        # Ferma il timer
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print("L'addestramento ha impiegato", round(elapsed_time, 5), "secondi.")
 
-        print("L'addestramento ha impiegato", round(end_time - start_time, 5), "secondi.")
+        best_model._clone_network_params(self)
 
-        # Copia i parametri della rete migliore nella rete corrente
-        best_network._clone_network_params(self)
+        return training_errors, validation_errors, training_accuracies, validation_accuracies, elapsed_time
 
-        return train_errors, validation_errors, train_accuracies, validation_accuracies
+
+def plot_metrics(results):
+    """
+    Funzione per tracciare le metriche di addestramento e validazione.
+
+    Args:
+        results (list): Lista contenente i risultati delle reti addestrate.
+    """
+    train_errors, validation_errors, train_accuracies, validation_accuracies, _ = zip(*results)
+
+    epochs_range = range(len(train_errors[0]))
+
+    # Creazione della figura
+    plt.figure(figsize=(14, 10))
+
+    # Grafico degli errori di addestramento e validazione
+    plt.subplot(2, 2, 1)
+    for errors in train_errors:
+        plt.plot(epochs_range, errors, label='Errore di addestramento')
+    for errors in validation_errors:
+        plt.plot(epochs_range, errors, label='Errore di validazione', linestyle='--')
+    plt.title('Errori di Addestramento e Validazione')
+    plt.xlabel('Epoche')
+    plt.ylabel('Errore')
+    plt.legend()
+    plt.grid()
+
+    # Grafico delle accuratezze di addestramento e validazione
+    plt.subplot(2, 2, 2)
+    for accuracies in train_accuracies:
+        plt.plot(epochs_range, accuracies, label='Accuratezza di addestramento')
+    for accuracies in validation_accuracies:
+        plt.plot(epochs_range, accuracies, label='Accuratezza di validazione', linestyle='--')
+    plt.title('Accuratezze di Addestramento e Validazione')
+    plt.xlabel('Epoche')
+    plt.ylabel('Accuratezza')
+    plt.legend()
+    plt.grid()
+
+    plt.tight_layout()
+    plt.show()
+
+
+def calculate_accuracy(predictions, true_labels):
+    """
+    Calcola l'accuratezza della rete neurale confrontando le previsioni con i valori reali.
+
+    Args:
+        predictions (numpy.ndarray): Array contenente le previsioni della rete.
+        true_labels (numpy.ndarray): Array contenente i valori reali.
+
+    Returns:
+        float: Percentuale di previsioni corrette rispetto ai valori reali.
+    """
+    num_samples = true_labels.shape[1]
+
+    # Calcola le probabilità con la funzione softmax sulle previsioni
+    probability_predictions = LossFunctions.softmax(predictions)
+
+    # Ottiene le classi predette trovando l'indice del valore massimo lungo l'asse delle colonne
+    predicted_classes = np.argmax(probability_predictions, axis=0)
+
+    # Ottiene le classi target trovando l'indice del valore massimo negli obiettivi reali
+    true_classes = np.argmax(true_labels, axis=0)
+
+    # Conta le previsioni corrette confrontando le classi predette con quelle reali
+    correct_predictions_count = np.sum(predicted_classes == true_classes)
+    accuracy_ratio = correct_predictions_count / num_samples
+
+    return accuracy_ratio
+
 
 def metrics_mae_rmse_accuracy(metrics_list, epochs, number_of_runs):
     """
     Calcola l'Errore Assoluto Medio (MAE), l'Errore Quadratico Medio (RMSE) e l'accuratezza delle metriche
     per ogni epoca attraverso diverse esecuzioni di addestramento.
 
-    Args:
-        metrics_list (list): Una lista di liste contenente le metriche ottenute da diverse esecuzioni di addestramento.
-                             Ogni sottolista corrisponde a una singola esecuzione e contiene le metriche calcolate per ogni epoca.
-        epochs (int): Il numero totale di epoche.
-        number_of_runs (int): Il numero totale di esecuzioni di addestramento.
+    Args: metrics_list (list): Una lista di liste contenente le metriche ottenute da diverse esecuzioni di
+    addestramento. Ogni sottolista corrisponde a una singola esecuzione e contiene le metriche calcolate per ogni
+    epoca. epochs (int): Il numero totale di epoche. number_of_runs (int): Il numero totale di esecuzioni di
+    addestramento.
 
     Returns:
         Tuple: Una tupla contenente:
@@ -445,5 +528,3 @@ def metrics_mae_rmse_accuracy(metrics_list, epochs, number_of_runs):
         print(f"Epoca {epoch}: {value}")
 
     return mae_list, rmse_list, accuracy_list
-
-
