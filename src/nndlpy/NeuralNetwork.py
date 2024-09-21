@@ -256,51 +256,42 @@ class NeuralNetwork:
             list: Aggiornamenti dei pesi calcolati per ogni strato.
         """
 
-        # Inizializzazione degli aggiornamenti dei pesi per il layer corrente
-        updated_weight_diff = previous_weight_updates
+        # Utilizzo di deepcopy per evitare modifiche non intenzionali ai dati
+        updated_weight_diff = deepcopy(previous_weight_updates)
 
-        for layer in range(len(self.weights)):
-            current_layer_weights = self.weights[layer]
+        def adjust_delta(gradient_product, current_update, eta_plus, eta_minus, max_d, min_d):
+            if gradient_product > 0:
+                return min(current_update * eta_plus, max_d), True
+            elif gradient_product < 0:
+                return max(current_update * eta_minus, min_d), False
+            return current_update, None
 
-            for row in range(len(gradients[layer])):
-                for col in range(len(gradients[layer][row])):
-                    gradient_product = previous_gradients[layer][row][col] * gradients[layer][row][col]
+        def update_weight(grad_value, delta, method_type):
+            if method_type == 'STANDARD' or (method_type == 'IRPROP' and grad_value != 0):
+                return -np.sign(grad_value) * delta
+            return 0
 
-                    if gradient_product > 0:
-                        # Incremento del delta per pesi
-                        weight_updates[layer][row][col] = min(weight_updates[layer][row][col] * positive_eta, max_delta)
+        for layer_idx, layer_weights in enumerate(self.weights):
+            for row_idx, row in enumerate(layer_weights):
+                for col_idx, _ in enumerate(row):
+                    gradient_product = previous_gradients[layer_idx][row_idx][col_idx] * gradients[layer_idx][row_idx][
+                        col_idx]
+                    delta, sign_change = adjust_delta(gradient_product, weight_updates[layer_idx][row_idx][col_idx],
+                                                      positive_eta, negative_eta, max_delta, min_delta)
 
-                        # Aggiornamento dell'aggiornamento dei pesi
-                        updated_weight_diff[layer][row][col] = -(
-                                np.sign(gradients[layer][row][col]) * weight_updates[layer][row][col]
-                        )
+                    weight_updates[layer_idx][row_idx][col_idx] = delta
+                    grad_value = gradients[layer_idx][row_idx][col_idx]
 
-                    elif gradient_product < 0:
-                        # Decremento del delta per pesi
-                        weight_updates[layer][row][col] = max(weight_updates[layer][row][col] * negative_eta, min_delta)
+                    updated_value = update_weight(grad_value, delta, rprop_method)
+                    if sign_change is False and (rprop_method == 'RPROP_PLUS' or current_error > previous_error):
+                        updated_value = -previous_weight_updates[layer_idx][row_idx][col_idx]
 
-                        if rprop_method in ['STANDARD', 'IRPROP']:
-                            updated_weight_diff[layer][row][col] = -(
-                                    np.sign(gradients[layer][row][col]) * weight_updates[layer][row][col]
-                            )
-                        else:
-                            if rprop_method in ['RPROP_PLUS'] or current_error > previous_error:
-                                updated_weight_diff[layer][row][col] = -previous_weight_updates[layer][row][col]
+                    updated_weight_diff[layer_idx][row_idx][col_idx] = updated_value
+                    self.weights[layer_idx][row_idx][col_idx] += updated_value
 
-                        if rprop_method != 'STANDARD':
-                            gradients[layer][row][col] = 0
-
-                    else:
-                        updated_weight_diff[layer][row][col] = -(
-                                np.sign(gradients[layer][row][col]) * weight_updates[layer][row][col]
-                        )
-
-                    # Aggiornamento del peso
-                    current_layer_weights[row][col] += updated_weight_diff[layer][row][col]
-
-                    # Memorizzazione del gradiente per la prossima iterazione
-                    previous_gradients[layer][row][col] = gradients[layer][row][col]
-                    previous_weight_updates[layer][row][col] = updated_weight_diff[layer][row][col]
+                    if sign_change is not None:
+                        previous_gradients[layer_idx][row_idx][col_idx] = grad_value
+                        previous_weight_updates[layer_idx][row_idx][col_idx] = updated_value
 
         return updated_weight_diff
 
@@ -325,77 +316,67 @@ class NeuralNetwork:
                 - training_accuracies (list): Lista delle accuratezze di addestramento per ogni epoca.
                 - validation_accuracies (list): Lista delle accuratezze di validazione per ogni epoca.
         """
-        training_errors = []
-        validation_errors = []
-        training_accuracies = []
-        validation_accuracies = []
-        loss_function = self.loss_function
 
-        # Inizializzazione delle variabili
-        weights_update, previous_gradients, weight_differences = None, None, None
+        def log_epoch_info(epoch_num, max_epochs, train_acc, train_err, val_acc, val_err, method):
+            print(f'\nEpoch: {epoch_num}/{max_epochs}   Rprop used: {method}\n'
+                  f'    Training Accuracy: {np.round(train_acc, 5)},       Training Loss: {np.round(train_err, 5)};\n'
+                  f'    Validation Accuracy: {np.round(val_acc, 5)},     Validation Loss: {np.round(val_err, 5)}\n')
 
-        previous_validation_error = float('inf')
-        lowest_validation_error = float('inf')
+        training_errors, validation_errors = [], []
+        training_accuracies, validation_accuracies = [], []
+
         best_model = self.clone_network()
+        previous_validation_error = lowest_validation_error = float('inf')
 
-        # Inizio del timer
+        weights_update, previous_gradients, weight_differences = None, None, None
         start_time = time.time()
 
-        # Inizio del processo di addestramento
         for epoch in range(num_epochs + 1):
-
-            # Propagazione in avanti per il set di addestramento
+            # Propagazione in avanti
             training_output = self._forward_propagation(training_data)
-            current_training_error = loss_function(training_output, training_labels)
-            training_errors.append(current_training_error)
-
-            # Propagazione in avanti per il set di validazione
             validation_output = self._forward_propagation(validation_data)
-            current_validation_error = loss_function(validation_output, validation_labels)
+
+            # Funzione di errore
+            current_training_error = self.loss_function(training_output, training_labels)
+            current_validation_error = self.loss_function(validation_output, validation_labels)
+
+            training_errors.append(current_training_error)
             validation_errors.append(current_validation_error)
 
-            current_training_accuracy = calculate_accuracy(training_output, training_labels)
-            current_validation_accuracy = calculate_accuracy(validation_output, validation_labels)
-            training_accuracies.append(current_training_accuracy)
-            validation_accuracies.append(current_validation_accuracy)
+            training_accuracies.append(calculate_accuracy(training_output, training_labels))
+            validation_accuracies.append(calculate_accuracy(validation_output, validation_labels))
 
-            print(f'\nEpoch: {epoch}/{num_epochs}   Rprop used: {rprop_method}\n'
-                  f'    Training Accuracy: {np.round(current_training_accuracy, 5)},       Training Loss: {np.round(current_training_error, 5)};\n'
-                  f'    Validation Accuracy: {np.round(current_validation_accuracy, 5)},     Validation Loss: {np.round(current_validation_error, 5)}\n')
+            # Stampa delle informazioni per le epoche
+            log_epoch_info(epoch, num_epochs, training_accuracies[-1], current_training_error,
+                           validation_accuracies[-1], current_validation_error, rprop_method)
 
             if epoch == num_epochs:
                 break
 
-            # Calcolo dei gradienti e retropropagazione
+            # Calcolo dei gradienti
             layer_outputs, activation_derivatives = self.activations_derivatives_calc(training_data)
-            gradients = self._back_propagation(activation_derivatives, layer_outputs, training_labels, loss_function)
+            gradients = self._back_propagation(activation_derivatives, layer_outputs, training_labels,
+                                               self.loss_function)
 
             if epoch == 0:  # Prima epoca
-                # Aggiornamento pesi tramite discesa del gradiente
                 self._gradient_descent(learning_rate, gradients)
-
-                # Inizializzazione dei delta per Rprop
-                weights_update = [[[0.1 for _ in row] for row in sub_list] for sub_list in gradients]
-                weight_differences = [[[0. for _ in row] for row in sub_list] for sub_list in gradients]
-
+                weights_update = [[[0.1 for _ in row] for row in layer] for layer in gradients]
+                weight_differences = deepcopy(weights_update)
                 previous_gradients = deepcopy(gradients)
             else:
-                # Aggiornamento dei pesi utilizzando Rprop
                 weight_differences = self.update_weights_rprop(gradients, weights_update, previous_gradients,
                                                                weight_differences, current_validation_error,
                                                                previous_validation_error, rprop_method=rprop_method)
 
             previous_validation_error = current_validation_error
 
-            # Aggiornamento del modello migliore
+            # Salvataggio del miglior modello
             if current_validation_error < lowest_validation_error:
                 lowest_validation_error = current_validation_error
                 best_model = self.clone_network()
 
-        # Ferma il timer
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        print("L'addestramento ha impiegato", round(elapsed_time, 5), "secondi.")
+        elapsed_time = time.time() - start_time
+        print("Tempo impiegato per l'addestramento: ", round(elapsed_time, 5), "secondi.")
 
         best_model._clone_network_params(self)
 
