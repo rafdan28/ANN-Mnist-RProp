@@ -381,6 +381,42 @@ class NeuralNetwork:
 
         return training_errors, validation_errors, training_accuracies, validation_accuracies, elapsed_time
 
+    def print_accuracies(self, title, test_X, test_Y, train_X, train_Y):
+        """
+        Stampa il titolo specificato, seguito dall'accuratezza della rete neurale sui set di test e di addestramento.
+
+        Argomenti:
+            title (str): Il titolo da stampare prima di visualizzare le accuratezze.
+            test_X (numpy.ndarray): Il set di input di test.
+            test_Y (numpy.ndarray): Le etichette di test corrispondenti.
+            train_X (numpy.ndarray): Il set di input di addestramento.
+            train_Y (numpy.ndarray): Le etichette di addestramento corrispondenti.
+
+        Returns:
+            net_accuracy_test (float): L'accuratezza della rete neurale sul set di test.
+        """
+
+        def network_accuracy(X, Y):
+            """
+            Calcola l'accuratezza della rete neurale su un insieme di dati di input e target specificato.
+
+            Args:
+                X (numpy.ndarray): Dati di input su cui valutare la rete.
+                Y (numpy.ndarray): Target desiderati per i dati di input.
+
+            Returns:
+                float: Percentuale di predizioni corrette rispetto ai target desiderati.
+            """
+            output = self._forward_propagation(X)
+            return _calculate_accuracy(output, Y)
+
+        print(title)
+        net_accuracy_test = network_accuracy(test_X, test_Y)
+        print(f'Test accuracy: {np.round(net_accuracy_test, 5)}')
+        net_accuracy_training = network_accuracy(train_X, train_Y)
+        print(f'Train accuracy: {np.round(net_accuracy_training, 5)}')
+        return net_accuracy_test
+
 
 def plot_metrics(results):
     """
