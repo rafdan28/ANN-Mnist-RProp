@@ -42,28 +42,28 @@ class NeuralNetwork:
             input_size (int): Numero di unità nello strato di input.
             output_size (int): Numero di unità nello strato di output.
         """
+
+        def set_weights(num_neurons, num_inputs):
+            """
+            Assegna i pesi per uno specifico layer.
+
+            Args:
+                num_neurons (int): Numero di neuroni nel layer.
+                num_inputs (int): Numero di input del layer.
+            """
+            self.weights.append(np.random.normal(self.MEAN, self.STD_DEV, (num_neurons, num_inputs + 1)))
+
         hidden_sizes = self.hidden_layers
 
         # Pesi per lo strato di input
-        self._set_weights(0, hidden_sizes[0], input_size)
+        set_weights(hidden_sizes[0], input_size)
 
         # Pesi per gli strati nascosti
         for i in range(1, self.num_hidden_layers):
-            self._set_weights(i, hidden_sizes[i], hidden_sizes[i - 1])
+            set_weights(hidden_sizes[i], hidden_sizes[i - 1])
 
         # Pesi per lo strato di output
-        self._set_weights(self.num_hidden_layers, output_size, hidden_sizes[-1])
-
-    def _set_weights(self, layer_idx, num_neurons, num_inputs):
-        """
-        Assegna i pesi per uno specifico layer.
-
-        Args:
-            layer_idx (int): Indice del layer.
-            num_neurons (int): Numero di neuroni nel layer.
-            num_inputs (int): Numero di input del layer.
-        """
-        self.weights.append(np.random.normal(self.MEAN, self.STD_DEV, (num_neurons, num_inputs + 1)))
+        set_weights(output_size, hidden_sizes[-1])
 
     def get_network(self):
         """
@@ -118,23 +118,6 @@ class NeuralNetwork:
             i = self.activation_functions[layer_idx](output)
 
         return i
-
-    def _gradient_descent(self, learning_rate, weights_der):
-        """
-        Applica la discesa del gradiente per ottimizzare i pesi e i bias della rete neurale.
-
-        Args:
-            learning_rate (float): Tasso di apprendimento che determina l'entità degli aggiornamenti.
-            weights_der (list): Lista contenente i gradienti dei pesi per ogni layer.
-
-        Returns:
-            NeuralNetwork: Istanza aggiornata della rete neurale con i nuovi pesi.
-        """
-        for layer_idx in range(len(self.weights)):
-            # Aggiornamento dei pesi utilizzando il gradiente
-            self.weights[layer_idx] -= learning_rate * weights_der[layer_idx]
-
-        return self
 
     def _back_propagation(self, input_activations, layer_outputs, target, error_function):
         """
@@ -194,42 +177,6 @@ class NeuralNetwork:
 
         # Copia delle funzioni di attivazione
         destination_net.activation_functions = list(self.activation_functions)
-
-    def _activations_derivatives_calc(self, input_data):
-        """
-        Calcola gli output per ogni layer e le derivate delle funzioni di attivazione
-        necessarie per la backpropagation.
-
-        Args:
-            input_data (numpy.ndarray): Dati di input forniti alla rete neurale.
-
-        Returns:
-            tuple: Due liste contenenti gli output di ciascun layer e le relative derivate.
-        """
-
-        # Recupera i pesi e le funzioni di attivazione
-        weights = self.weights
-        activation_functions = self.activation_functions
-        num_layers = len(weights)
-
-        # Inizializza le liste per gli output dei layer e le derivate
-        layer_outputs = [input_data]
-        activation_derivatives = []
-
-        for layer in range(num_layers):
-            # Inserisce il bias e calcola l'output lineare
-            input_with_bias = np.vstack((np.ones((1, layer_outputs[layer].shape[1])), layer_outputs[layer]))
-            linear_output = np.dot(weights[layer], input_with_bias)
-
-            # Calcola l'output finale e la derivata della funzione di attivazione
-            layer_output = activation_functions[layer](linear_output)
-            derivative_activation = activation_functions[layer](linear_output, der=True)
-
-            # Aggiorna le liste degli output e delle derivate
-            layer_outputs.append(layer_output)
-            activation_derivatives.append(derivative_activation)
-
-        return layer_outputs, activation_derivatives
 
     def _update_weights_rprop(self, gradients, weight_updates, previous_gradients, previous_weight_updates,
                               current_error,
@@ -317,6 +264,58 @@ class NeuralNetwork:
                 - validation_accuracies (list): Lista delle accuratezze di validazione per ogni epoca.
         """
 
+        def activations_derivatives_calc(input_data):
+            """
+            Calcola gli output per ogni layer e le derivate delle funzioni di attivazione
+            necessarie per la backpropagation.
+
+            Args:
+                input_data (numpy.ndarray): Dati di input forniti alla rete neurale.
+
+            Returns:
+                tuple: Due liste contenenti gli output di ciascun layer e le relative derivate.
+            """
+
+            # Recupera i pesi e le funzioni di attivazione
+            weights = self.weights
+            activation_functions = self.activation_functions
+            num_layers = len(weights)
+
+            # Inizializza le liste per gli output dei layer e le derivate
+            layer_outputs = [input_data]
+            activation_derivatives = []
+
+            for layer in range(num_layers):
+                # Inserisce il bias e calcola l'output lineare
+                input_with_bias = np.vstack((np.ones((1, layer_outputs[layer].shape[1])), layer_outputs[layer]))
+                linear_output = np.dot(weights[layer], input_with_bias)
+
+                # Calcola l'output finale e la derivata della funzione di attivazione
+                layer_output = activation_functions[layer](linear_output)
+                derivative_activation = activation_functions[layer](linear_output, der=True)
+
+                # Aggiorna le liste degli output e delle derivate
+                layer_outputs.append(layer_output)
+                activation_derivatives.append(derivative_activation)
+
+            return layer_outputs, activation_derivatives
+
+        def gradient_descent(weights_der):
+            """
+            Applica la discesa del gradiente per ottimizzare i pesi e i bias della rete neurale.
+
+            Args:
+                weights_der (list): Lista contenente i gradienti dei pesi per ogni layer.
+
+            Returns:
+                NeuralNetwork: Istanza aggiornata della rete neurale con i nuovi pesi.
+            """
+            for layer_idx in range(len(self.weights)):
+                # Aggiornamento dei pesi utilizzando il gradiente
+                self.weights[layer_idx] -= learning_rate * weights_der[layer_idx]
+
+            return self
+
         def log_epoch_info(epoch_num, max_epochs, train_acc, train_err, val_acc, val_err, method):
             print(f'\nEpoch: {epoch_num}/{max_epochs}   Rprop used: {method}\n'
                   f'    Training Accuracy: {np.round(train_acc, 5)},       Training Loss: {np.round(train_err, 5)};\n'
@@ -354,12 +353,12 @@ class NeuralNetwork:
                 break
 
             # Calcolo dei gradienti
-            layer_outputs, activation_derivatives = self._activations_derivatives_calc(training_data)
+            layer_outputs, activation_derivatives = activations_derivatives_calc(training_data)
             gradients = self._back_propagation(activation_derivatives, layer_outputs, training_labels,
                                                self.loss_function)
 
             if epoch == 0:  # Prima epoca
-                self._gradient_descent(learning_rate, gradients)
+                gradient_descent(gradients)
                 weights_update = [[[0.1 for _ in row] for row in layer] for layer in gradients]
                 weight_differences = deepcopy(weights_update)
                 previous_gradients = deepcopy(gradients)
