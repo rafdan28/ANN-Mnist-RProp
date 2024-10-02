@@ -30,7 +30,8 @@ class NeuralNetwork:
         if len(hidden_activations) != len(hidden_layer_sizes):
             raise ValueError("Discrepanza tra numero di layer nascosti e funzioni di attivazione.")
 
-        self.activation_functions = hidden_activations + [output_activation]
+        self.activation_functions = hidden_activations
+        self.activation_functions.append(output_activation)
         self.num_hidden_layers = len(hidden_layer_sizes)
         self._initialize_weights(input_size, output_size)
 
@@ -178,69 +179,91 @@ class NeuralNetwork:
         # Copia delle funzioni di attivazione
         destination_net.activation_functions = list(self.activation_functions)
 
-    def _update_weights_rprop(self, gradients, weight_updates, previous_gradients, previous_weight_updates,
-                              current_error,
-                              previous_error, positive_eta=1.2, negative_eta=0.5, max_delta=50, min_delta=0.00001,
+    def _update_weights_rprop(self, weights_der, weights_delta, weights_der_prev, layer_weights_difference_prev, train_error,
+                              train_error_prev, eta_pos=1.2, eta_neg=0.5, delta_max=50, delta_min=0.00001,
                               rprop_method='STANDARD'):
         """
-        Aggiorna i pesi della rete neurale utilizzando l'algoritmo Rprop. Supporta diverse varianti
-        come descritto nell'articolo "Empirical evaluation of the improved Rprop learning algorithms".
+        Funzione Rprop per l'aggiornamento dei pesi per reti multistrato. Implementa la versione standard e le tre varianti
+        contenute nell'articolo "Empirical evaluation of the improved Rprop learning algorithms". Le varianti vengono
+        implementate tramite l'attributo rprop_type.
 
         Args:
-            gradients (list): Gradienti attuali dei pesi per ogni strato.
-            weight_updates (list): Aggiornamenti dei pesi per ogni strato.
-            previous_gradients (list): Gradienti dei pesi dalla iterazione precedente.
-            previous_weight_updates (list): Aggiornamenti dei pesi dalla iterazione precedente.
-            current_error (float): Errore per l'epoca corrente.
-            previous_error (float): Errore per l'epoca precedente.
-            positive_eta (float): Fattore di incremento per il delta in caso di derivata positiva (default: 1.2).
-            negative_eta (float): Fattore di decremento per il delta in caso di derivata negativa (default: 0.5).
-            max_delta (float): Limite superiore per il delta (default: 50).
-            min_delta (float): Limite inferiore per il delta (default: 0.00001).
-            rprop_method (str): Metodo Rprop da utilizzare (default: 'STANDARD').
+            weights_der (list): Lista dei gradienti dei pesi per ciascuno strato.
+            weights_delta (list): Lista dei delta dei pesi per ciascuno strato.
+            weights_der_prev (list): Lista dei gradienti dei pesi della precedente iterazione.
+            layer_weights_difference_prev (list): Lista delle differenze dei pesi della precedente iterazione.
+            train_error (float): Errore dell'epoca corrente.
+            train_error_prev (float): Errore dell'epoca precedente.
+            eta_pos (float): Fattore di aggiornamento dei delta per derivata positiva (default: 1.2).
+            eta_neg (float): Fattore di aggiornamento dei delta per derivata negativa (default: 0.5).
+            delta_max (float): Limite superiore per il delta (default: 50).
+            delta_min (float): Limite inferiore per il delta (default: 0.00001).
+            rprop_method (String): Tipo di Rprop da utilizzare (default: STANDARD).
 
         Returns:
-            list: Aggiornamenti dei pesi calcolati per ogni strato.
+            NeuralNetwork: Rete neurale aggiornata con il metodo Rprop.
         """
 
-        # Utilizzo di deepcopy per evitare modifiche non intenzionali ai dati
-        updated_weight_diff = deepcopy(previous_weight_updates)
+        # Inizializzazione delle liste dei delta per i pesi e i bias per l'attuale strato
+        layer_weights_difference = layer_weights_difference_prev
 
-        def adjust_delta(gradient_product, current_update, eta_plus, eta_minus, max_d, min_d):
-            if gradient_product > 0:
-                return min(current_update * eta_plus, max_d), True
-            elif gradient_product < 0:
-                return max(current_update * eta_minus, min_d), False
-            return current_update, None
+        for layer in range(len(self.weights)):
+            layer_weights = self.weights[layer]
 
-        def update_weight(grad_value, delta, method_type):
-            if method_type == 'STANDARD' or (method_type == 'IRPROP' and grad_value != 0):
-                return -np.sign(grad_value) * delta
-            return 0
+            for num_rows in range(len(weights_der[layer])):
+                for num_cols in range(len(weights_der[layer][num_rows])):
+                    weight_der_product = weights_der_prev[layer][num_rows][num_cols] * weights_der[layer][num_rows][
+                        num_cols]
 
-        for layer_idx, layer_weights in enumerate(self.weights):
-            for row_idx, row in enumerate(layer_weights):
-                for col_idx, _ in enumerate(row):
-                    gradient_product = previous_gradients[layer_idx][row_idx][col_idx] * gradients[layer_idx][row_idx][
-                        col_idx]
-                    delta, sign_change = adjust_delta(gradient_product, weight_updates[layer_idx][row_idx][col_idx],
-                                                      positive_eta, negative_eta, max_delta, min_delta)
+                    if weight_der_product > 0:
+                        # Calcolo della nuova dimensione del delta per i pesi
+                        weights_delta[layer][num_rows][num_cols] = min(weights_delta[layer][num_rows][num_cols] *
+                                                                       eta_pos, delta_max)
 
-                    weight_updates[layer_idx][row_idx][col_idx] = delta
-                    grad_value = gradients[layer_idx][row_idx][col_idx]
+                        # Aggiornamento della differenza del peso
+                        layer_weights_difference[layer][num_rows][num_cols] = -(
+                                np.sign(weights_der[layer][num_rows][num_cols])
+                                * weights_delta[layer][num_rows][num_cols])
 
-                    updated_value = update_weight(grad_value, delta, rprop_method)
-                    if sign_change is False and (rprop_method == 'RPROP_PLUS' or current_error > previous_error):
-                        updated_value = -previous_weight_updates[layer_idx][row_idx][col_idx]
+                    elif weight_der_product < 0:
+                        # Calcolo della nuova dimensione del delta per i pesi
+                        weights_delta[layer][num_rows][num_cols] = max(weights_delta[layer][num_rows][num_cols] *
+                                                                       eta_neg, delta_min)
 
-                    updated_weight_diff[layer_idx][row_idx][col_idx] = updated_value
-                    self.weights[layer_idx][row_idx][col_idx] += updated_value
+                        if rprop_method == 'STANDARD' or rprop_method == 'IRPROP':
+                            # Aggiornamento della differenza del peso
+                            layer_weights_difference[layer][num_rows][num_cols] = -(
+                                    np.sign(weights_der[layer][num_rows][
+                                                num_cols]) *
+                                    weights_delta[layer][num_rows][num_cols])
+                        else:
+                            if rprop_method == 'RPROP_PLUS' or train_error > train_error_prev:
+                                # Aggiornamento della differenza del peso
+                                layer_weights_difference[layer][num_rows][num_cols] = -layer_weights_difference_prev[
+                                    layer][num_rows][num_cols]
+                            else:
+                                # Aggiornamento della differenza del peso
+                                layer_weights_difference[layer][num_rows][num_cols] = 0
 
-                    if sign_change is not None:
-                        previous_gradients[layer_idx][row_idx][col_idx] = grad_value
-                        previous_weight_updates[layer_idx][row_idx][col_idx] = updated_value
+                        if rprop_method != 'STANDARD':
+                            # Aggiornamento della derivata del peso
+                            weights_der[layer][num_rows][num_cols] = 0
 
-        return updated_weight_diff
+                    else:
+                        # Aggiornamento della differenza del peso
+                        layer_weights_difference[layer][num_rows][num_cols] = -(
+                                np.sign(weights_der[layer][num_rows][num_cols])
+                                * weights_delta[layer][num_rows][num_cols])
+
+                    # Aggiornamento del peso
+                    layer_weights[num_rows][num_cols] += layer_weights_difference[layer][num_rows][num_cols]
+
+                    # Aggiornamento del gradiente del peso precedente
+                    weights_der_prev[layer][num_rows][num_cols] = weights_der[layer][num_rows][num_cols]
+
+                    layer_weights_difference_prev[layer][num_rows][num_cols] = layer_weights_difference[layer][num_rows][num_cols]
+
+        return layer_weights_difference
 
     def train_model(self, training_data, training_labels, validation_data, validation_labels, num_epochs=35,
                     learning_rate=0.00001, rprop_method='STANDARD'):
@@ -418,48 +441,6 @@ class NeuralNetwork:
         return net_accuracy_test
 
 
-def plot_metrics(results):
-    """
-    Funzione per tracciare le metriche di addestramento e validazione.
-
-    Args:
-        results (list): Lista contenente i risultati delle reti addestrate.
-    """
-    train_errors, validation_errors, train_accuracies, validation_accuracies, _ = zip(*results)
-
-    epochs_range = range(len(train_errors[0]))
-
-    # Creazione della figura
-    plt.figure(figsize=(14, 10))
-
-    # Grafico degli errori di addestramento e validazione
-    plt.subplot(2, 2, 1)
-    for errors in train_errors:
-        plt.plot(epochs_range, errors, label='Errore di addestramento')
-    for errors in validation_errors:
-        plt.plot(epochs_range, errors, label='Errore di validazione', linestyle='--')
-    plt.title('Errori di Addestramento e Validazione')
-    plt.xlabel('Epoche')
-    plt.ylabel('Errore')
-    plt.legend()
-    plt.grid()
-
-    # Grafico delle accuratezze di addestramento e validazione
-    plt.subplot(2, 2, 2)
-    for accuracies in train_accuracies:
-        plt.plot(epochs_range, accuracies, label='Accuratezza di addestramento')
-    for accuracies in validation_accuracies:
-        plt.plot(epochs_range, accuracies, label='Accuratezza di validazione', linestyle='--')
-    plt.title('Accuratezze di Addestramento e Validazione')
-    plt.xlabel('Epoche')
-    plt.ylabel('Accuratezza')
-    plt.legend()
-    plt.grid()
-
-    plt.tight_layout()
-    plt.show()
-
-
 def _calculate_accuracy(predictions, true_labels):
     """
     Calcola l'accuratezza della rete confrontando le previsioni con le etichette reali.
@@ -500,6 +481,77 @@ def _calculate_accuracy(predictions, true_labels):
     accuracy_ratio = correct_predictions_count / num_samples
 
     return accuracy_ratio
+
+
+def calculate_mean_and_variance(metrics_list, epochs, number_of_runs):
+    """
+    Calcola la media e la varianza delle metriche per ogni epoca attraverso diverse esecuzioni di addestramento.
+
+    Args:
+        metrics_list (list): Una lista di liste contenente le metriche ottenute da diverse esecuzioni di addestramento.
+                             Ogni sottolista corrisponde a una singola esecuzione e contiene le metriche calcolate
+                             per ogni epoca.
+        epochs (int): Il numero totale di epoche.
+        number_of_runs (int): Il numero totale di esecuzioni di addestramento.
+
+    Returns:
+        tuple: Una tupla contenente quattro elementi:
+               - metrics_mean: Lista delle medie delle metriche per ogni epoca.
+               - metrics_variance: Lista delle varianze normalizzate delle metriche per ogni epoca.
+               - last_metrics_mean: Lista delle ultime medie delle metriche.
+               - last_metrics_variance: Lista delle ultime varianze normalizzate delle metriche.
+    """
+    numbers_of_metrics = len(metrics_list[0])
+    metrics_mean = [[] for _ in range(numbers_of_metrics)]
+    metrics_variance = [[] for _ in range(numbers_of_metrics)]
+
+    for metric in range(numbers_of_metrics - 1):
+        for epoch in range(epochs + 1):
+            metric_mean, metric_variance = 0, 0
+            for run in range(number_of_runs):
+                # Calcola la media per questa epoca e questa metrica attraverso tutte le run
+                metric_mean += metrics_list[run][metric][epoch] / number_of_runs
+            # Aggiungo la media alla lista delle medie della metrica corrispondente
+            metrics_mean[metric].append(metric_mean)
+
+            for run in range(number_of_runs):
+                # Calcola la varianza per questa epoca e questa metrica attraverso tutte le run
+                metric_variance += pow(metrics_list[run][metric][epoch] - metric_mean, 2) / number_of_runs
+            # Calcola la varianza normalizzata rispetto alla media, per poter confrontare reti diverse
+            norm_variance = metric_variance / metric_mean
+            # Aggiunge la media alla lista delle medie della metrica corrispondente
+            metrics_variance[metric].append(norm_variance)
+
+    time_mean, time_variance = 0, 0
+    for run in range(number_of_runs):
+        # Calcola la media dei tempi di esecuzione di tutte le run
+        time_mean += metrics_list[run][-1] / number_of_runs
+    metrics_mean[-1] = time_mean
+
+    for run in range(number_of_runs):
+        # Calcola la varianza per questa epoca e questa metrica attraverso tutte le run
+        time_variance += pow(metrics_list[run][-1] - time_mean, 2) / number_of_runs
+    metrics_variance[-1] = time_variance
+
+    # Prende l'ultima media di ogni metrica che rappresenta l'ultima epoca
+    last_metrics_mean = [round(metric_mean[-1], 5) if isinstance(metric_mean, list) else round(metric_mean, 5) for
+                         metric_mean in metrics_mean]
+
+    # Prende l'ultima varianza di ogni metrica che rappresenta l'ultima epoca
+    last_metrics_variance = [
+        round(metric_variance[-1], 5) if isinstance(metric_variance, list) else round(metric_variance, 5) for
+        metric_variance in metrics_variance]
+
+    metrics = ["Train Error", "Validation Error", "Train Accuracy", "Validation Accuracy", "Time"]
+
+    # Stampa delle metriche raggruppate per media e varianza
+    for metric, mean, var in zip(metrics, last_metrics_mean, last_metrics_variance):
+        print(f"{metric}:")
+        print(f"Media: {mean}")
+        print(f"Varianza: {var}")
+        print()
+
+    return metrics_mean, metrics_variance, last_metrics_mean, last_metrics_variance
 
 
 def metrics_mae_rmse_accuracy(metrics_list, epochs, number_of_runs):
@@ -547,3 +599,4 @@ def metrics_mae_rmse_accuracy(metrics_list, epochs, number_of_runs):
     print_metrics("Accuratezza", accuracy_list)
 
     return mae_list, rmse_list, accuracy_list
+
