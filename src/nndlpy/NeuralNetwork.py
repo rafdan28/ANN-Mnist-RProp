@@ -542,15 +542,6 @@ def calculate_mean_and_variance(metrics_list, epochs, number_of_runs):
         round(metric_variance[-1], 5) if isinstance(metric_variance, list) else round(metric_variance, 5) for
         metric_variance in metrics_variance]
 
-    metrics = ["Train Error", "Validation Error", "Train Accuracy", "Validation Accuracy", "Time"]
-
-    # Stampa delle metriche raggruppate per media e varianza
-    for metric, mean, var in zip(metrics, last_metrics_mean, last_metrics_variance):
-        print(f"{metric}:")
-        print(f"Media: {mean}")
-        print(f"Varianza: {var}")
-        print()
-
     return metrics_mean, metrics_variance, last_metrics_mean, last_metrics_variance
 
 
