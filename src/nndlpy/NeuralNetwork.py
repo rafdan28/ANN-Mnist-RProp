@@ -1,6 +1,5 @@
 from copy import deepcopy
 
-from matplotlib import pyplot as plt
 from nndlpy import LossFunctions as LossFunctions
 
 import numpy as np
