@@ -488,10 +488,10 @@ def compute_metrics_statistics(metrics_data, num_epochs, num_runs):
         num_runs (int): Numero totale di esecuzioni.
 
     Returns:
-        - avg_metrics: Lista delle medie delle metriche per ogni epoca.
+        - mean_metrics: Lista delle medie delle metriche per ogni epoca.
         - norm_variances: Lista delle varianze normalizzate delle metriche per ogni epoca.
-        - final_avg_metrics: Lista delle medie delle metriche all'ultima epoca.
-        - final_norm_variances: Lista delle varianze normalizzate delle metriche all'ultima epoca.
+        - final_last_mean_metrics: Lista delle medie delle metriche all'ultima epoca.
+        - final_last_norm_variances: Lista delle varianze normalizzate delle metriche all'ultima epoca.
     """
     num_metrics = len(metrics_data[0])
     mean_metrics = [[] for _ in range(num_metrics)]
