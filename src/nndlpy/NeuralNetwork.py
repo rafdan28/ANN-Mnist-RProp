@@ -431,7 +431,7 @@ class NeuralNetwork:
         net_accuracy_test = network_accuracy(test_X, test_Y)
         print(f'Accuratezza sul Test Set: {np.round(net_accuracy_test, 5)}')
         net_accuracy_training = network_accuracy(train_X, train_Y)
-        print(f'Accuratezza sul Train Set: {np.round(net_accuracy_training, 5)}')
+        print(f'Accuratezza sul Training Set: {np.round(net_accuracy_training, 5)}')
         return net_accuracy_test
 
 
