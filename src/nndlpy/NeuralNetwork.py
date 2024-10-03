@@ -178,91 +178,86 @@ class NeuralNetwork:
         # Copia delle funzioni di attivazione
         destination_net.activation_functions = list(self.activation_functions)
 
-    def _update_weights_rprop(self, weights_der, weights_delta, weights_der_prev, layer_weights_difference_prev, train_error,
-                              train_error_prev, eta_pos=1.2, eta_neg=0.5, delta_max=50, delta_min=0.00001,
+    def _update_weights_rprop(self, gradients, deltas, prev_gradients, prev_weight_changes, current_error,
+                              previous_error, increase_factor=1.2, decrease_factor=0.5, max_delta=50, min_delta=0.00001,
                               rprop_method='STANDARD'):
         """
-        Funzione Rprop per l'aggiornamento dei pesi per reti multistrato. Implementa la versione standard e le tre varianti
-        contenute nell'articolo "Empirical evaluation of the improved Rprop learning algorithms". Le varianti vengono
-        implementate tramite l'attributo rprop_type.
+        Funzione Rprop per l'aggiornamento dei pesi in reti neurali multistrato. Implementa la versione standard e le varianti
+        descritte nell'articolo "Empirical evaluation of the improved Rprop learning algorithms". Le varianti sono gestite
+        tramite il parametro rprop_variant.
 
         Args:
-            weights_der (list): Lista dei gradienti dei pesi per ciascuno strato.
-            weights_delta (list): Lista dei delta dei pesi per ciascuno strato.
-            weights_der_prev (list): Lista dei gradienti dei pesi della precedente iterazione.
-            layer_weights_difference_prev (list): Lista delle differenze dei pesi della precedente iterazione.
-            train_error (float): Errore dell'epoca corrente.
-            train_error_prev (float): Errore dell'epoca precedente.
-            eta_pos (float): Fattore di aggiornamento dei delta per derivata positiva (default: 1.2).
-            eta_neg (float): Fattore di aggiornamento dei delta per derivata negativa (default: 0.5).
-            delta_max (float): Limite superiore per il delta (default: 50).
-            delta_min (float): Limite inferiore per il delta (default: 0.00001).
+            gradients (list): Lista dei gradienti dei pesi per ciascun strato.
+            deltas (list): Lista dei delta dei pesi per ciascun strato.
+            prev_gradients (list): Lista dei gradienti dei pesi della iterazione precedente.
+            prev_weight_changes (list): Lista delle variazioni di peso della iterazione precedente.
+            current_error (float): Errore dell'epoca corrente.
+            previous_error (float): Errore dell'epoca precedente.
+            increase_factor (float): Fattore di aggiornamento per derivata positiva (default: 1.2).
+            decrease_factor (float): Fattore di aggiornamento per derivata negativa (default: 0.5).
+            max_delta (float): Limite superiore per il delta (default: 50).
+            min_delta (float): Limite inferiore per il delta (default: 0.00001).
             rprop_method (String): Tipo di Rprop da utilizzare (default: STANDARD).
 
         Returns:
-            NeuralNetwork: Rete neurale aggiornata con il metodo Rprop.
+            NeuralNetwork: Rete neurale aggiornata utilizzando il metodo Rprop.
         """
 
-        # Inizializzazione delle liste dei delta per i pesi e i bias per l'attuale strato
-        layer_weights_difference = layer_weights_difference_prev
+        # Inizializzazione delle variazioni di peso per l'attuale strato
+        weight_changes = prev_weight_changes
 
-        for layer in range(len(self.weights)):
-            layer_weights = self.weights[layer]
+        for layer_idx in range(len(self.weights)):
+            layer_weights = self.weights[layer_idx]
 
-            for num_rows in range(len(weights_der[layer])):
-                for num_cols in range(len(weights_der[layer][num_rows])):
-                    weight_der_product = weights_der_prev[layer][num_rows][num_cols] * weights_der[layer][num_rows][
-                        num_cols]
+            for row in range(len(gradients[layer_idx])):
+                for col in range(len(gradients[layer_idx][row])):
+                    gradient_product = prev_gradients[layer_idx][row][col] * gradients[layer_idx][row][col]
 
-                    if weight_der_product > 0:
+                    if gradient_product > 0:
                         # Calcolo della nuova dimensione del delta per i pesi
-                        weights_delta[layer][num_rows][num_cols] = min(weights_delta[layer][num_rows][num_cols] *
-                                                                       eta_pos, delta_max)
+                        deltas[layer_idx][row][col] = min(deltas[layer_idx][row][col] * increase_factor, max_delta)
 
-                        # Aggiornamento della differenza del peso
-                        layer_weights_difference[layer][num_rows][num_cols] = -(
-                                np.sign(weights_der[layer][num_rows][num_cols])
-                                * weights_delta[layer][num_rows][num_cols])
+                        # Aggiornamento della variazione di peso
+                        weight_changes[layer_idx][row][col] = -(
+                                np.sign(gradients[layer_idx][row][col])
+                                * deltas[layer_idx][row][col])
 
-                    elif weight_der_product < 0:
+                    elif gradient_product < 0:
                         # Calcolo della nuova dimensione del delta per i pesi
-                        weights_delta[layer][num_rows][num_cols] = max(weights_delta[layer][num_rows][num_cols] *
-                                                                       eta_neg, delta_min)
+                        deltas[layer_idx][row][col] = max(deltas[layer_idx][row][col] * decrease_factor, min_delta)
 
                         if rprop_method == 'STANDARD' or rprop_method == 'IRPROP':
-                            # Aggiornamento della differenza del peso
-                            layer_weights_difference[layer][num_rows][num_cols] = -(
-                                    np.sign(weights_der[layer][num_rows][
-                                                num_cols]) *
-                                    weights_delta[layer][num_rows][num_cols])
+                            # Aggiornamento della variazione di peso
+                            weight_changes[layer_idx][row][col] = -(
+                                    np.sign(gradients[layer_idx][row][col]) *
+                                    deltas[layer_idx][row][col])
                         else:
-                            if rprop_method == 'RPROP_PLUS' or train_error > train_error_prev:
-                                # Aggiornamento della differenza del peso
-                                layer_weights_difference[layer][num_rows][num_cols] = -layer_weights_difference_prev[
-                                    layer][num_rows][num_cols]
+                            if rprop_method == 'RPROP_PLUS' or current_error > previous_error:
+                                # Aggiornamento della variazione di peso
+                                weight_changes[layer_idx][row][col] = -prev_weight_changes[layer_idx][row][col]
                             else:
-                                # Aggiornamento della differenza del peso
-                                layer_weights_difference[layer][num_rows][num_cols] = 0
+                                # Azzeramento della variazione di peso
+                                weight_changes[layer_idx][row][col] = 0
 
                         if rprop_method != 'STANDARD':
-                            # Aggiornamento della derivata del peso
-                            weights_der[layer][num_rows][num_cols] = 0
+                            # Azzeramento del gradiente del peso
+                            gradients[layer_idx][row][col] = 0
 
                     else:
-                        # Aggiornamento della differenza del peso
-                        layer_weights_difference[layer][num_rows][num_cols] = -(
-                                np.sign(weights_der[layer][num_rows][num_cols])
-                                * weights_delta[layer][num_rows][num_cols])
+                        # Aggiornamento della variazione di peso
+                        weight_changes[layer_idx][row][col] = -(
+                                np.sign(gradients[layer_idx][row][col])
+                                * deltas[layer_idx][row][col])
 
                     # Aggiornamento del peso
-                    layer_weights[num_rows][num_cols] += layer_weights_difference[layer][num_rows][num_cols]
+                    layer_weights[row][col] += weight_changes[layer_idx][row][col]
 
                     # Aggiornamento del gradiente del peso precedente
-                    weights_der_prev[layer][num_rows][num_cols] = weights_der[layer][num_rows][num_cols]
+                    prev_gradients[layer_idx][row][col] = gradients[layer_idx][row][col]
 
-                    layer_weights_difference_prev[layer][num_rows][num_cols] = layer_weights_difference[layer][num_rows][num_cols]
+                    prev_weight_changes[layer_idx][row][col] = weight_changes[layer_idx][row][col]
 
-        return layer_weights_difference
+        return weight_changes
 
     def train_model(self, training_data, training_labels, validation_data, validation_labels, num_epochs=35,
                     learning_rate=0.00001, rprop_method='STANDARD'):
@@ -340,8 +335,8 @@ class NeuralNetwork:
 
         def log_epoch_info(epoch_num, max_epochs, train_acc, train_err, val_acc, val_err, method):
             print(f'\nEpoch: {epoch_num}/{max_epochs}   Rprop used: {method}\n'
-                  f'    Training Accuracy: {np.round(train_acc, 5)},       Training Loss: {np.round(train_err, 5)};\n'
-                  f'    Validation Accuracy: {np.round(val_acc, 5)},     Validation Loss: {np.round(val_err, 5)}\n')
+                  f'    Accuratezza sul Training Set: {np.round(train_acc, 5)},       Errore sul Training Set: {np.round(train_err, 5)};\n'
+                  f'    Accuratezza sul Validation Set: {np.round(val_acc, 5)},     Errore sul Validation Set: {np.round(val_err, 5)}\n')
 
         training_errors, validation_errors = [], []
         training_accuracies, validation_accuracies = [], []
@@ -434,9 +429,9 @@ class NeuralNetwork:
 
         print(title)
         net_accuracy_test = network_accuracy(test_X, test_Y)
-        print(f'Test accuracy: {np.round(net_accuracy_test, 5)}')
+        print(f'Accuratezza sul Test Set: {np.round(net_accuracy_test, 5)}')
         net_accuracy_training = network_accuracy(train_X, train_Y)
-        print(f'Train accuracy: {np.round(net_accuracy_training, 5)}')
+        print(f'Accuratezza sul Train Set: {np.round(net_accuracy_training, 5)}')
         return net_accuracy_test
 
 
@@ -482,111 +477,57 @@ def _calculate_accuracy(predictions, true_labels):
     return accuracy_ratio
 
 
-def calculate_mean_and_variance(metrics_list, epochs, number_of_runs):
+def compute_metrics_statistics(metrics_data, num_epochs, num_runs):
     """
-    Calcola la media e la varianza delle metriche per ogni epoca attraverso diverse esecuzioni di addestramento.
+    Calcola la media e la varianza normalizzata delle metriche per ogni epoca su più esecuzioni.
 
     Args:
-        metrics_list (list): Una lista di liste contenente le metriche ottenute da diverse esecuzioni di addestramento.
-                             Ogni sottolista corrisponde a una singola esecuzione e contiene le metriche calcolate
-                             per ogni epoca.
-        epochs (int): Il numero totale di epoche.
-        number_of_runs (int): Il numero totale di esecuzioni di addestramento.
+        metrics_data (list): Lista di liste contenente le metriche ottenute da diverse esecuzioni.
+                             Ogni sottolista corrisponde a una singola esecuzione e contiene le metriche per ogni epoca.
+        num_epochs (int): Numero totale di epoche.
+        num_runs (int): Numero totale di esecuzioni.
 
     Returns:
-        tuple: Una tupla contenente quattro elementi:
-               - metrics_mean: Lista delle medie delle metriche per ogni epoca.
-               - metrics_variance: Lista delle varianze normalizzate delle metriche per ogni epoca.
-               - last_metrics_mean: Lista delle ultime medie delle metriche.
-               - last_metrics_variance: Lista delle ultime varianze normalizzate delle metriche.
+        - avg_metrics: Lista delle medie delle metriche per ogni epoca.
+        - norm_variances: Lista delle varianze normalizzate delle metriche per ogni epoca.
+        - final_avg_metrics: Lista delle medie delle metriche all'ultima epoca.
+        - final_norm_variances: Lista delle varianze normalizzate delle metriche all'ultima epoca.
     """
-    numbers_of_metrics = len(metrics_list[0])
-    metrics_mean = [[] for _ in range(numbers_of_metrics)]
-    metrics_variance = [[] for _ in range(numbers_of_metrics)]
+    num_metrics = len(metrics_data[0])
+    mean_metrics = [[] for _ in range(num_metrics)]
+    norm_variances = [[] for _ in range(num_metrics)]
 
-    for metric in range(numbers_of_metrics - 1):
-        for epoch in range(epochs + 1):
-            metric_mean, metric_variance = 0, 0
-            for run in range(number_of_runs):
-                # Calcola la media per questa epoca e questa metrica attraverso tutte le run
-                metric_mean += metrics_list[run][metric][epoch] / number_of_runs
-            # Aggiungo la media alla lista delle medie della metrica corrispondente
-            metrics_mean[metric].append(metric_mean)
+    for metric_idx in range(num_metrics - 1):
+        for epoch in range(num_epochs + 1):
+            epoch_mean, epoch_variance = 0, 0
+            for run_idx in range(num_runs):
+                # Calcola la media della metrica per questa epoca su tutte le run
+                epoch_mean += metrics_data[run_idx][metric_idx][epoch] / num_runs
+            mean_metrics[metric_idx].append(epoch_mean)
 
-            for run in range(number_of_runs):
-                # Calcola la varianza per questa epoca e questa metrica attraverso tutte le run
-                metric_variance += pow(metrics_list[run][metric][epoch] - metric_mean, 2) / number_of_runs
-            # Calcola la varianza normalizzata rispetto alla media, per poter confrontare reti diverse
-            norm_variance = metric_variance / metric_mean
-            # Aggiunge la media alla lista delle medie della metrica corrispondente
-            metrics_variance[metric].append(norm_variance)
+            for run_idx in range(num_runs):
+                # Calcola la varianza della metrica per questa epoca su tutte le run
+                epoch_variance += pow(metrics_data[run_idx][metric_idx][epoch] - epoch_mean, 2) / num_runs
+            # Calcola la varianza normalizzata rispetto alla media
+            normalized_variance = epoch_variance / epoch_mean if epoch_mean != 0 else 0
+            norm_variances[metric_idx].append(normalized_variance)
 
-    time_mean, time_variance = 0, 0
-    for run in range(number_of_runs):
-        # Calcola la media dei tempi di esecuzione di tutte le run
-        time_mean += metrics_list[run][-1] / number_of_runs
-    metrics_mean[-1] = time_mean
+    # Calcolo della media e della varianza per i tempi di esecuzione
+    execution_time_mean, execution_time_variance = 0, 0
+    for run_idx in range(num_runs):
+        execution_time_mean += metrics_data[run_idx][-1] / num_runs
+    mean_metrics[-1] = execution_time_mean
 
-    for run in range(number_of_runs):
-        # Calcola la varianza per questa epoca e questa metrica attraverso tutte le run
-        time_variance += pow(metrics_list[run][-1] - time_mean, 2) / number_of_runs
-    metrics_variance[-1] = time_variance
+    for run_idx in range(num_runs):
+        execution_time_variance += pow(metrics_data[run_idx][-1] - execution_time_mean, 2) / num_runs
+    norm_variances[-1] = execution_time_variance
 
-    # Prende l'ultima media di ogni metrica che rappresenta l'ultima epoca
-    last_metrics_mean = [round(metric_mean[-1], 5) if isinstance(metric_mean, list) else round(metric_mean, 5) for
-                         metric_mean in metrics_mean]
+    # Estrai le medie finali (dell'ultima epoca) di ogni metrica
+    final_last_mean_metrics = [round(mean[-1], 5) if isinstance(mean, list) else round(mean, 5) for mean in mean_metrics]
 
-    # Prende l'ultima varianza di ogni metrica che rappresenta l'ultima epoca
-    last_metrics_variance = [
-        round(metric_variance[-1], 5) if isinstance(metric_variance, list) else round(metric_variance, 5) for
-        metric_variance in metrics_variance]
+    # Estrai le varianze finali (dell'ultima epoca) di ogni metrica
+    final_last_norm_variances = [
+        round(var[-1], 5) if isinstance(var, list) else round(var, 5) for var in norm_variances]
 
-    return metrics_mean, metrics_variance, last_metrics_mean, last_metrics_variance
-
-
-def metrics_mae_rmse_accuracy(metrics_list, epochs, number_of_runs):
-    """
-    Calcola l'Errore Assoluto Medio (MAE), l'Errore Quadratico Medio (RMSE) e l'accuratezza per ogni epoca
-    attraverso diverse esecuzioni di addestramento.
-
-    Args:
-        metrics_list (list): Lista di liste contenente le metriche per diverse esecuzioni di addestramento.
-        epochs (int): Numero totale di epoche.
-        number_of_runs (int): Numero totale di esecuzioni di addestramento.
-
-    Returns:
-        tuple: Una tupla contenente:
-            - mae_list: Lista dei MAE per ogni epoca.
-            - rmse_list: Lista dei RMSE per ogni epoca.
-            - accuracy_list: Lista delle accuratezze per ogni epoca.
-    """
-
-    def calculate_mean_absolute_error(run_data, epoch_idx):
-        return np.mean(np.abs(run_data[0][epoch_idx] - run_data[1][epoch_idx]))
-
-    def calculate_root_mean_square_error(run_data, epoch_idx):
-        return np.sqrt(np.mean((run_data[0][epoch_idx] - run_data[1][epoch_idx]) ** 2))
-
-    def calculate_accuracy(run_data, epoch_idx):
-        return np.mean(run_data[2][epoch_idx])
-
-    def calculate_metric_over_runs(metric_func, epoch):
-        return sum(metric_func(metrics_list[run], epoch) for run in range(number_of_runs)) / number_of_runs
-
-    mae_list = [round(calculate_metric_over_runs(calculate_mean_absolute_error, epoch), 5) for epoch in
-                range(epochs + 1)]
-    rmse_list = [round(calculate_metric_over_runs(calculate_root_mean_square_error, epoch), 5) for epoch in
-                 range(epochs + 1)]
-    accuracy_list = [round(calculate_metric_over_runs(calculate_accuracy, epoch), 5) for epoch in range(epochs + 1)]
-
-    def print_metrics(metric_name, metric_list):
-        print(f"\n{metric_name} per ogni epoca:")
-        for epoch, value in enumerate(metric_list):
-            print(f"Epoca {epoch}: {value}")
-
-    print_metrics("MAE", mae_list)
-    print_metrics("RMSE", rmse_list)
-    print_metrics("Accuratezza", accuracy_list)
-
-    return mae_list, rmse_list, accuracy_list
+    return mean_metrics, norm_variances, final_last_mean_metrics, final_last_norm_variances
 
