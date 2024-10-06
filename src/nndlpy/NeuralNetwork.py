@@ -259,7 +259,7 @@ class NeuralNetwork:
 
         return weight_changes
 
-    def train_model(self, training_data, training_labels, validation_data, validation_labels, num_epochs=35,
+    def train_model(self, training_data, training_labels, validation_data, validation_labels, num_epochs=50,
                     learning_rate=0.00001, rprop_method='STANDARD'):
         """
         Gestisce il processo di apprendimento della rete neurale.
@@ -269,7 +269,7 @@ class NeuralNetwork:
             training_labels (numpy.ndarray): Target desiderati per i dati di input di addestramento.
             validation_data (numpy.ndarray): Dati di input per la validazione.
             validation_labels (numpy.ndarray): Target desiderati per i dati di input di validazione.
-            num_epochs (int, optional): Numero massimo di epoche per l'addestramento (default: 35).
+            num_epochs (int, optional): Numero massimo di epoche per l'addestramento (default: 50).
             learning_rate (float, optional): Tasso di apprendimento per l'ottimizzazione (default: 0.00001).
             rprop_method (str): Tipo di metodo Rprop da utilizzare (default: 'STANDARD').
 
